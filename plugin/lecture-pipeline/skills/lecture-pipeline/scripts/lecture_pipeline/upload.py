@@ -1,7 +1,7 @@
 """산출물 폴더 → 뷰어 웹 업로드. 표준 라이브러리만 쓴다.
 
 사용: python3 <스킬>/scripts/lp.py upload --out workspace/out/<ID> [--api URL] [--token T]
-      (--api 를 생략하면 환경변수 VCU_API, --token 은 VCU_API_TOKEN 을 쓴다)
+      (--api 를 생략하면 VCU_API 환경변수, 그것도 없으면 config.DEFAULT_API 로 간다)
 
 원본·편집본이 합쳐 1~2GB 라 **파일을 메모리에 올리지 않고 흘려보낸다** — multipart 본문의
 길이를 미리 계산해 Content-Length 로 알린 뒤, 파일을 1MB 씩 읽어 소켓에 그대로 쓴다.
@@ -17,7 +17,6 @@ from __future__ import annotations
 import argparse
 import http.client
 import json
-import os
 import shutil
 import ssl
 import sys
@@ -26,7 +25,7 @@ import uuid
 from pathlib import Path
 from urllib.parse import urlsplit
 
-from . import jobs
+from . import config, jobs
 
 CHUNK = 1 << 20
 POLL_EVERY = 5.0
@@ -170,15 +169,14 @@ def wait_ready(api: str, lecture_id: str, timeout: float = 1800) -> dict:
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--out", required=True, help="산출물 폴더 (workspace/out/<ID>)")
-    ap.add_argument("--api", default=os.environ.get("VCU_API", ""), help="뷰어 API 주소 (기본: 환경변수 VCU_API)")
-    ap.add_argument("--token", default=os.environ.get("VCU_API_TOKEN", ""), help="관리자 토큰 (기본: 환경변수 VCU_API_TOKEN)")
+    ap.add_argument("--api", default="", help="뷰어 API 주소 (생략하면 VCU_API 환경변수, 그것도 없으면 내장 기본값)")
+    ap.add_argument("--token", default="", help="관리자 토큰 (생략하면 VCU_API_TOKEN 환경변수)")
     ap.add_argument("--timeout", type=float, default=1800, help="ready 까지 기다릴 최대 초")
     ap.add_argument("--no-wait", action="store_true", help="업로드만 하고 적재 완료를 기다리지 않는다")
     a = ap.parse_args()
-    if not a.api:
-        ap.error("--api 도 환경변수 VCU_API 도 없다 — 뷰어 주소를 알려 줘야 올릴 수 있다")
+    api_url, tok = config.api(a.api), config.token(a.token)
 
-    res = upload(Path(a.out), a.api.rstrip("/"), a.token)
+    res = upload(Path(a.out), api_url, tok)
     lid = str(res.get("id", ""))
     try:  # 진행도 카드에서 결과 강의로 이어주기 위한 부가 정보. 실패해도 무방하다.
         doc = json.loads((Path(a.out) / "lecture.json").read_text(encoding="utf-8"))
@@ -189,7 +187,7 @@ def main() -> None:
     if a.no_wait:
         print(lid)
         return
-    st = wait_ready(a.api.rstrip("/"), lid, a.timeout)
+    st = wait_ready(api_url, lid, a.timeout)
     _log(f"적재 완료 · 임베딩 {st.get('embed_done')}/{st.get('embed_total')}")
     print(lid)
 

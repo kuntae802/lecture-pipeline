@@ -15,8 +15,9 @@ description: 유튜브 강의 URL → 편집본 mp4 + lecture.json + 챕터 썸�
 - `$PY` = `python3` (윈도우는 `python`). 0단계 `doctor` 가 어느 쪽인지 알려준다.
 - **작업 산출물은 전부 현재 작업 폴더(cwd) 아래**에 만들어진다. 코드는 `$SKILL` 안에만 있고, 사용자는 아무 빈 폴더에서나 실행하면 된다.
 - 아래에서 `<ID>` = 유튜브 video id(1단계가 URL 에서 뽑아 폴더 이름으로 쓴다). **사용자에게 강의 번호를 묻지 않는다** — 뷰어에 올라갈 강의 id 는 8단계가 `<ID>-<MMDD-HHMM>` 으로 자동 생성한다.
-- **옵션:** 호출에 `--no-glossary` 가 붙으면 6.5단계(용어집)를 건너뛴다. 기본은 켜짐(서브에이전트 1개 추가).
-- **진행도:** 환경변수 `VCU_API` 가 있으면 `lp.py` 명령이 자기 단계를 뷰어에 자동으로 알린다(뷰어 강의 목록에 작업 카드가 뜬다). 없으면 아무 일도 일어나지 않는다. 아래 4·6·6.5단계는 `lp.py` 밖에서 도는 판단 단계라 **직접 알려야** 그 구간이 화면에서 멈춘 것처럼 보이지 않는다.
+- **옵션:** 호출에 `--no-glossary` 가 붙으면 6.5단계(용어집)를, `--no-upload` 가 붙으면 9단계(업로드)를 건너뛴다. 둘 다 기본은 켜짐.
+- **뷰어:** 완성본을 올릴 뷰어 주소는 스킬에 내장돼 있다 — 설치한 사람이 따로 설정할 것이 없다(다른 뷰어에 올리려면 `VCU_API` 환경변수로 덮는다).
+- **진행도:** `lp.py` 명령이 자기 단계를 뷰어에 자동으로 알린다(뷰어 강의 목록에 작업 카드가 뜬다). 아래 4·6·6.5단계는 `lp.py` 밖에서 도는 판단 단계라 **직접 알려야** 그 구간이 화면에서 멈춘 것처럼 보이지 않는다.
 
 ## 0단계 — 환경 점검 (항상 먼저)
 
@@ -48,13 +49,13 @@ $PY "$SKILL/scripts/lp.py" doctor
 8. **조립** — 원본을 산출물 폴더에 `original.mp4` 로 하드링크(또는 복사)한 뒤
    `$PY "$SKILL/scripts/lp.py" assemble --build workspace/build/<ID>/youtube --outline workspace/build/<ID>/outline.json --notes workspace/build/<ID>/notes.json --info workspace/raw/<ID>/source.info.json --original workspace/raw/<ID>/source.mp4 --edited workspace/out/<ID>/edited.mp4 --out workspace/out/<ID>` (용어집을 만들었으면 `--glossary workspace/build/<ID>/glossary.json` 를 덧붙인다)
    → `lecture.json` + `thumbs/chNN.jpg`
-9. **업로드** — 환경변수 `VCU_API` (뷰어 API 주소)가 있으면 **자동으로 올린다.**
-   `$PY "$SKILL/scripts/lp.py" upload --out workspace/out/<ID>`
-   → 썸네일 zip 을 알아서 만들어 함께 올리고, 적재·임베딩이 끝날 때까지 기다린 뒤 강의 id 를 출력한다.
-   토큰을 요구하는 뷰어면 `VCU_API_TOKEN` 도 함께 설정한다(없으면 헤더를 생략한다).
-   실패하면 아래 수동 절차를 안내한다 — 산출물은 이미 다 만들어져 있으므로 다시 돌릴 필요가 없다.
+9. **업로드** — `$PY "$SKILL/scripts/lp.py" upload --out workspace/out/<ID>`
+   → 뷰어 주소는 내장돼 있으므로 그대로 실행하면 된다. 썸네일 zip 을 알아서 만들어 함께 올리고,
+   적재·임베딩이 끝날 때까지 기다린 뒤 강의 id 를 출력한다. 끝나면 뷰어에서 볼 수 있는 주소를 사용자에게 알린다.
+   토큰을 요구하는 뷰어면 `VCU_API_TOKEN` 을 설정한다(없으면 헤더를 생략한다).
 
-   `VCU_API` 가 없으면 산출물 폴더 `workspace/out/<ID>/` 를 알리고, 뷰어 웹의 **업로드 화면**에서 아래 3개(+선택 1개)를 올리게 안내한다.
+   `--no-upload` 로 건너뛰었거나 업로드가 실패하면, 산출물 폴더 `workspace/out/<ID>/` 를 알리고 뷰어 웹의
+   **업로드 화면**에서 아래 3개(+선택 1개)를 올리게 안내한다 — 산출물은 이미 다 만들어져 있으므로 파이프라인을 다시 돌릴 필요가 없다.
    - `original.mp4` (원본 — 편집 검토 화면의 대조용)
    - `edited.mp4` (편집본 — 플레이어 본체)
    - `lecture.json` (전사·컷·목차·노트)

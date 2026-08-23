@@ -120,6 +120,10 @@ def report(res: dict) -> int:
     else:
         lines.append("  GPU: NVENC 없음 → libx264(CPU)로 렌더합니다. 3시간 강의 기준 실측 약 13분(4스레드), 기기에 따라 20~40분.")
 
+    from . import config
+    lines += ["", f"  뷰어: {config.api()}" + ("  (내장 기본값)" if config.is_default() else "  (VCU_API 로 지정됨)"),
+              "        완성된 강의를 여기로 올리고 작업 진행도도 여기서 볼 수 있습니다."]
+
     if missing:
         lines += ["", "설치가 필요합니다:"]
         for name, cmd in missing:

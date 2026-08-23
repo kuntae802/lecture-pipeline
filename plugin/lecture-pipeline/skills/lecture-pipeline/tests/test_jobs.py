@@ -7,7 +7,7 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 
 import pytest
 
-from lecture_pipeline import jobs
+from lecture_pipeline import config, jobs
 from lecture_pipeline.ids import KST, stamped_id
 
 AT = datetime(2026, 8, 23, 18, 30, tzinfo=KST)
@@ -51,11 +51,20 @@ def test_load_returns_none_without_a_job_file(tmp_path, monkeypatch):
 
 
 # ── 보고는 어떤 상황에서도 예외를 내지 않는다 ──────────────────────────────────
-def test_report_is_a_noop_without_api(tmp_path, monkeypatch):
-    monkeypatch.chdir(tmp_path)
+def test_viewer_is_built_in_so_a_fresh_install_needs_no_setup(monkeypatch):
+    """설치만 하면 업로드·진행도가 동작해야 한다 — 환경변수 설정을 요구하지 않는다."""
     monkeypatch.delenv("VCU_API", raising=False)
-    jobs.start("vid")
-    jobs.report("fetch", "running")  # 예외가 나지 않으면 통과
+    assert config.api().startswith("https://") and config.is_default()
+
+
+def test_env_var_overrides_the_built_in_viewer(monkeypatch):
+    monkeypatch.setenv("VCU_API", "http://other.example/api/")
+    assert config.api() == "http://other.example/api" and not config.is_default()
+
+
+def test_explicit_argument_beats_everything(monkeypatch):
+    monkeypatch.setenv("VCU_API", "http://env.example/api")
+    assert config.api("http://cli.example/api") == "http://cli.example/api"
 
 
 def test_report_is_a_noop_without_a_job_file(tmp_path, monkeypatch):

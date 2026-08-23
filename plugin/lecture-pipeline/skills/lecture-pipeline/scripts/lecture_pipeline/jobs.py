@@ -5,17 +5,17 @@
 같은 영상을 다시 돌리면 새 job 이 된다(중간 단계부터 재시작하면 같은 job 을 이어간다).
 
 **보고 실패는 삼킨다.** 네트워크나 뷰어 사정 때문에 강의 제작이 멈추면 안 된다 —
-`VCU_API` 가 없으면 아무것도 하지 않고, 있어도 3초 안에 응답이 없으면 그냥 넘어간다.
+3초 안에 응답이 없으면 그냥 넘어간다. 작업 폴더에 `.job` 이 없으면 아예 보내지 않는다.
 """
 from __future__ import annotations
 
 import http.client
 import json
-import os
 import ssl
 from pathlib import Path
 from urllib.parse import urlsplit
 
+from . import config
 from .ids import stamped_id
 
 JOB_FILE = Path("workspace/.job")
@@ -26,7 +26,7 @@ STEPS = ("fetch", "preprocess", "chunk", "edit", "merge", "outline", "glossary",
 
 
 def api() -> str:
-    return os.environ.get("VCU_API", "").rstrip("/")
+    return config.api()
 
 
 def start(video_id: str, url: str = "") -> dict:
