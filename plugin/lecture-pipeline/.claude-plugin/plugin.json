@@ -1,0 +1,17 @@
+{
+  "name": "lecture-pipeline",
+  "description": "유튜브 강의 URL 하나로 편집본 영상 + 목차·요약·검색용 lecture.json 을 만드는 파이프라인. 실언 정정과 의미 중복만 잘라내는 보수적 자동 컷 편집, 2단 목차·챕터 요약·명령어 추출, 챕터 썸네일까지. 기계 단계는 파이썬 표준 라이브러리만 쓰고 판단 단계만 LLM 이 맡는다.",
+  "version": "0.6.0",
+  "author": {
+    "name": "kuntae802",
+    "email": "kuntae802@gmail.com"
+  },
+  "keywords": [
+    "video",
+    "lecture",
+    "transcript",
+    "ffmpeg",
+    "yt-dlp",
+    "korean"
+  ]
+}

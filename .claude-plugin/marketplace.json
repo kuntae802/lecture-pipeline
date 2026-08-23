@@ -1,0 +1,13 @@
+{
+  "name": "vcu-lecture-plugins",
+  "owner": { "name": "kuntae802", "email": "kuntae802@gmail.com" },
+  "description": "강의 영상을 목차·검색 가능한 자료로 바꾸는 도구 배포 채널.",
+  "plugins": [
+    {
+      "name": "lecture-pipeline",
+      "source": "./plugin/lecture-pipeline",
+      "description": "유튜브 강의 URL → 편집본 mp4 + lecture.json + 챕터 썸네일 (보수적 자동 컷 편집 · 2단 목차 · 강의 노트).",
+      "category": "productivity"
+    }
+  ]
+}

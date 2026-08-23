@@ -1,0 +1,351 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:lecture-pipeline:lecture.schema.json",
+  "title": "lecture.json",
+  "description": "스킬(파이프라인) → 웹(ingest) 계약. 모든 시간은 초(float), 시간 필드는 {orig, edit} 쌍. 컷 안 세그먼트는 edit=null.",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "lecture",
+    "files",
+    "segments",
+    "cuts",
+    "chapters",
+    "notes"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "1.0"
+    },
+    "lecture": {
+      "type": "object",
+      "required": [
+        "id",
+        "title",
+        "video_id",
+        "source_url",
+        "duration",
+        "pipeline"
+      ],
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "title": {
+          "type": "string"
+        },
+        "video_id": {
+          "type": "string"
+        },
+        "source_url": {
+          "type": "string"
+        },
+        "duration": {
+          "type": "object",
+          "required": [
+            "orig",
+            "edit"
+          ],
+          "properties": {
+            "orig": {
+              "type": "number"
+            },
+            "edit": {
+              "type": "number"
+            }
+          }
+        },
+        "pipeline": {
+          "type": "object",
+          "required": [
+            "transcript_source",
+            "policy",
+            "generated_at"
+          ],
+          "properties": {
+            "transcript_source": {
+              "type": "string"
+            },
+            "policy": {
+              "type": "string"
+            },
+            "generated_at": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    },
+    "files": {
+      "type": "object",
+      "required": [
+        "original",
+        "edited",
+        "thumbs_dir"
+      ],
+      "properties": {
+        "original": {
+          "type": "string"
+        },
+        "edited": {
+          "type": "string"
+        },
+        "thumbs_dir": {
+          "type": "string"
+        }
+      }
+    },
+    "segments": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "idx",
+          "text",
+          "t"
+        ],
+        "properties": {
+          "idx": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "text": {
+            "type": "string"
+          },
+          "t": {
+            "$ref": "#/$defs/tpair"
+          }
+        }
+      }
+    },
+    "cuts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "orig",
+          "edit_at",
+          "category",
+          "confidence",
+          "removed_text",
+          "note"
+        ],
+        "properties": {
+          "id": {
+            "type": "integer"
+          },
+          "orig": {
+            "$ref": "#/$defs/span"
+          },
+          "edit_at": {
+            "type": "number"
+          },
+          "category": {
+            "enum": [
+              "misstatement",
+              "duplicate"
+            ]
+          },
+          "confidence": {
+            "enum": [
+              "high",
+              "medium"
+            ]
+          },
+          "removed_text": {
+            "type": "string"
+          },
+          "note": {
+            "type": "string"
+          },
+          "segment_idx": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        }
+      }
+    },
+    "chapters": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/chapter"
+      }
+    },
+    "notes": {
+      "type": "object",
+      "required": [
+        "commands",
+        "links"
+      ],
+      "properties": {
+        "commands": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "text",
+              "segment_idx",
+              "t"
+            ],
+            "properties": {
+              "text": {
+                "type": "string"
+              },
+              "segment_idx": {
+                "type": "integer"
+              },
+              "t": {
+                "$ref": "#/$defs/tpair"
+              }
+            }
+          }
+        },
+        "links": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "url",
+              "label",
+              "segment_idx",
+              "t"
+            ],
+            "properties": {
+              "url": {
+                "type": "string"
+              },
+              "label": {
+                "type": "string"
+              },
+              "segment_idx": {
+                "type": "integer"
+              },
+              "t": {
+                "$ref": "#/$defs/tpair"
+              }
+            }
+          }
+        }
+      }
+    },
+    "glossary": {
+      "description": "선택 — 강의에서 설명된 기술 용어집(2026-08-23 추가). 없으면 웹은 용어집 탭을 숨긴다.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "term",
+          "definition",
+          "segment_idx",
+          "t"
+        ],
+        "properties": {
+          "term": {
+            "type": "string"
+          },
+          "definition": {
+            "type": "string"
+          },
+          "analogy": {
+            "type": "string"
+          },
+          "segment_idx": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "t": {
+            "$ref": "#/$defs/tpair"
+          }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "span": {
+      "type": "array",
+      "minItems": 2,
+      "maxItems": 2,
+      "items": {
+        "type": "number"
+      }
+    },
+    "tpair": {
+      "type": "object",
+      "required": [
+        "orig",
+        "edit"
+      ],
+      "properties": {
+        "orig": {
+          "$ref": "#/$defs/span"
+        },
+        "edit": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/span"
+            }
+          ]
+        }
+      }
+    },
+    "chapter": {
+      "type": "object",
+      "required": [
+        "id",
+        "level",
+        "title",
+        "summary",
+        "t",
+        "segments"
+      ],
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "level": {
+          "enum": [
+            1,
+            2
+          ]
+        },
+        "title": {
+          "type": "string"
+        },
+        "summary": {
+          "type": "string"
+        },
+        "t": {
+          "$ref": "#/$defs/tpair"
+        },
+        "segments": {
+          "type": "array",
+          "minItems": 2,
+          "maxItems": 2,
+          "items": {
+            "type": "integer",
+            "minimum": 1
+          }
+        },
+        "thumb": {
+          "type": "string"
+        },
+        "children": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/chapter"
+          }
+        }
+      }
+    }
+  }
+}
