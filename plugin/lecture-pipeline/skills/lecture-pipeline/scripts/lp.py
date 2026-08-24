@@ -64,7 +64,10 @@ def main() -> None:
     from lecture_pipeline import jobs
 
     tracked = cmd in jobs.STEPS
-    if tracked:
+    # fetch 의 시작만은 여기서 알리지 않는다 — 이 시점의 workspace/.job 은 아직 **앞 작업의 것**이라,
+    # 같은 폴더에서 다른 강의를 돌리면 끝난 작업이 "fetch 진행 중"으로 되살아난다(2026-08-24 실측).
+    # fetch 는 자기가 새 job 을 연 직후에 스스로 알린다.
+    if tracked and cmd != "fetch":
         jobs.report(cmd, "running")
     try:
         module.main()

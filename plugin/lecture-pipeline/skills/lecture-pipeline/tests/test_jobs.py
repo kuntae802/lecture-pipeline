@@ -136,3 +136,19 @@ def test_api_base_path_is_preserved(tmp_path, monkeypatch, stub):
 def test_steps_match_the_pipeline_order():
     assert jobs.STEPS[0] == "fetch" and jobs.STEPS[-1] == "upload"
     assert "edit" in jobs.STEPS and "render" in jobs.STEPS
+
+
+def test_a_new_run_in_the_same_folder_does_not_revive_the_previous_job(tmp_path, monkeypatch, stub):
+    """같은 폴더에서 다른 강의를 돌릴 때, lp.py 가 fetch 시작을 먼저 알리면 앞 작업의 .job 으로
+    보고가 날아가 끝난 카드가 되살아난다. 그래서 fetch 시작 보고는 lp.py 가 하지 않는다."""
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("VCU_API", stub)
+    old = jobs.start("OLDVIDEO")["job_id"]
+    jobs.report("upload", "done")            # 앞 작업 완료
+    _Stub.seen.clear()
+
+    # 새 강의: fetch 가 job 을 새로 열고 스스로 알린다
+    new = jobs.start("NEWVIDEO")["job_id"]
+    jobs.report("fetch", "running")
+    assert new != old
+    assert all(s["path"].endswith(new) for s in _Stub.seen), "앞 작업 id 로 간 보고가 있다"
