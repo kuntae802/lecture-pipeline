@@ -8,6 +8,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import re
 import subprocess
 from pathlib import Path
@@ -38,6 +39,12 @@ def fetch(url: str, root: Path = Path("workspace/raw")) -> Path:
     if not (d / "source.ko.json3").exists() or not (d / "source.info.json").exists():
         subprocess.run(common + ["--skip-download", "--write-auto-subs", "--sub-langs", "ko", "--sub-format", "json3",
                                  "--write-info-json", url], check=True)
+    # 제목은 여기서부터 알 수 있다 — 이걸 알려 줘야 진행도 카드가 영상 id 대신 강의 제목으로 뜬다.
+    try:
+        info = json.loads((d / "source.info.json").read_text(encoding="utf-8"))
+        jobs.report("fetch", "running", title=str(info.get("title", ""))[:300])
+    except Exception:
+        pass
     if not (d / "source.mp4").exists():
         # 특정 itag(137+140)를 못박으면 그 화질이 없는 영상에서 실패한다 — 폴백 사슬로 고른다.
         # 브라우저 호환이 가장 좋은 avc1+m4a 를 먼저, 없으면 아무 조합, 그래도 없으면 단일 파일.
