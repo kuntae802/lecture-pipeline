@@ -1,7 +1,7 @@
 {
   "name": "lecture-pipeline",
   "description": "유튜브 강의 → 정제 전사·목차·요약·용어집 + 뷰어 업로드. --include-video 로 편집본 영상까지",
-  "version": "0.10.0",
+  "version": "0.10.1",
   "author": {
     "name": "kuntae802",
     "email": "kuntae802@gmail.com"

@@ -83,3 +83,44 @@ def test_merge_reports_missing_chunk_file_and_bad_category(tmp_path):
     _, _, errs = merge(b, c)
     assert any("chunk 02" in e and "missing" in e for e in errs)
     assert any("category" in e for e in errs)
+
+
+# ── 교정 반영 문장(sentences.corrected.json) ─────────────────────────────────
+# 구조화·용어집 패스가 교정 전 문장을 읽으면 잘못 인식된 용어가 목차 제목과 용어집에 그대로 들어간다
+# (2026-09-28 e2e 에서 확인). 병합이 교정을 반영한 문장 파일을 따로 써서 그 패스들이 읽게 한다.
+from lecture_pipeline.merge_edits import corrected_sentences, main as merge_main
+
+SENTS = [{"idx": 1, "start": 0.0, "end": 2.5, "text": "w1 w2 w3", "word_from": 1, "word_to": 3},
+         {"idx": 2, "start": 3.0, "end": 4.5, "text": "w4 w5", "word_from": 4, "word_to": 5}]
+
+
+def test_corrected_sentences_apply_corrections_and_keep_everything_else():
+    words = {i: {"text": f"w{i}"} for i in range(1, 6)}
+    out = corrected_sentences(SENTS, words, [{"idx": 2, "from": "w2", "to": "파이썬"}, {"idx": 5, "from": "w5", "to": "VS Code"}])
+    assert [s["text"] for s in out] == ["w1 파이썬 w3", "w4 VS Code"]
+    assert [{k: v for k, v in s.items() if k != "text"} for s in out] == [{k: v for k, v in s.items() if k != "text"} for s in SENTS]
+    assert SENTS[0]["text"] == "w1 w2 w3"          # 입력을 바꾸지 않는다
+
+
+def test_merge_cli_writes_corrected_sentences_and_leaves_the_original(tmp_path, monkeypatch):
+    build, chunks = _setup_no_cuts(tmp_path, n_chunks=1)
+    sents = [{"idx": 1, "start": 0.0, "end": 19.5, "text": " ".join(f"w{i}" for i in range(1, 21)), "word_from": 1, "word_to": 20}]
+    (build / "sentences.json").write_text(json.dumps(sents), encoding="utf-8")
+    (chunks / "01.corrections.json").write_text(json.dumps([{"idx": 3, "from": "w3", "to": "W3"}]), encoding="utf-8")
+    monkeypatch.setattr("sys.argv", ["lp merge", "--build", str(build), "--chunks", str(chunks), "--no-cuts"])
+    merge_main()
+    fixed = json.loads((build / "sentences.corrected.json").read_text(encoding="utf-8"))
+    assert fixed[0]["text"].split()[2] == "W3"
+    assert json.loads((build / "sentences.json").read_text(encoding="utf-8")) == sents
+    merge_main()                                    # 다시 돌려도 같은 결과(원본에서 매번 새로 만든다)
+    assert json.loads((build / "sentences.corrected.json").read_text(encoding="utf-8")) == fixed
+
+
+def test_merge_cli_writes_nothing_when_sentences_are_missing(tmp_path, monkeypatch):
+    build, chunks = _setup_no_cuts(tmp_path, n_chunks=1)
+    (chunks / "01.corrections.json").write_text("[]", encoding="utf-8")
+    monkeypatch.setattr("sys.argv", ["lp merge", "--build", str(build), "--chunks", str(chunks), "--no-cuts"])
+    import pytest
+    with pytest.raises(FileNotFoundError):
+        merge_main()
+    assert not (build / "cuts.json").exists() and not (build / "corrections.json").exists()

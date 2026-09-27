@@ -45,8 +45,9 @@ description: 유튜브 강의 URL → 정제 전사·목차·챕터 요약·용�
    - [영상] 브리프 = 아래 [편집 브리프]. 산출 `chunks/NN.cuts.json`·`chunks/NN.corrections.json`. 끝나면 두 파일 수가 각각 청크 수와 같은지 확인한다.
    - 배치를 하나 마칠 때마다 진행도를 알린다 — `$PY "$SKILL/scripts/lp.py" progress --step edit --detail "8/19"` (완료 청크 수/전체).
 5. **병합·검증**
-   - [텍스트] `$PY "$SKILL/scripts/lp.py" merge --build workspace/build/<ID>/youtube --chunks workspace/build/<ID>/chunks --no-cuts` → `corrections.json` + 빈 `cuts.json`
-   - [영상] `$PY "$SKILL/scripts/lp.py" merge --build workspace/build/<ID>/youtube --chunks workspace/build/<ID>/chunks` → `cuts.json`·`corrections.json`. 첫 실행이면 컷 목록을 사용자에게 한 번 보여준다.
+   - [텍스트] `$PY "$SKILL/scripts/lp.py" merge --build workspace/build/<ID>/youtube --chunks workspace/build/<ID>/chunks --no-cuts` → `corrections.json` + 빈 `cuts.json` + `sentences.corrected.json`
+   - [영상] `$PY "$SKILL/scripts/lp.py" merge --build workspace/build/<ID>/youtube --chunks workspace/build/<ID>/chunks` → `cuts.json`·`corrections.json`·`sentences.corrected.json`. 첫 실행이면 컷 목록을 사용자에게 한 번 보여준다.
+   - `sentences.corrected.json` = 표기 교정을 반영한 문장 목록(원본 `sentences.json` 과 형식·번호가 같다). 6·6.5단계는 이 파일을 읽어야 잘못 인식된 용어가 목차·용어집에 들어가지 않는다.
    - 에러가 나면 **그 청크만** 4단계를 다시 돌린다(브리프 끝에 에러 메시지 원문을 붙인다).
 6. **구조화 패스 (판단)** — 먼저 `$PY "$SKILL/scripts/lp.py" progress --step outline` 로 시작을 알리고, Opus 서브에이전트 1개. 브리프는 아래 [구조화 브리프]. 산출 `workspace/build/<ID>/outline.json`·`notes.json`. 문장 커버리지가 어긋나면 8단계가 거부하므로, 에러를 붙여 1회 재실행한다. 끝나면 `... progress --step outline --status done`.
 6.5. **용어집 패스 (판단, 선택)** — `--no-glossary` 가 아니면 `... progress --step glossary` 로 알린 뒤 Opus 서브에이전트 1개를 더 띄운다. 브리프는 아래 [용어집 브리프]. 산출 `workspace/build/<ID>/glossary.json`. 실패해도 파이프라인은 계속 간다(8단계에서 `--glossary` 를 빼면 그만).
@@ -114,7 +115,7 @@ Finish with a 3-line report: number of cuts (with idx ranges, time ranges, categ
 ```
 You are structuring a Korean technical lecture transcript into a two-level outline.
 
-INPUT: <ABS>/workspace/build/<ID>/youtube/sentences.json — [{idx, start, end, text, word_from, word_to}] in order (N sentences; seconds). Sentences whose word range falls inside cut spans listed in <ABS>/workspace/build/<ID>/youtube/cuts.json are removed speech — ignore their content but keep idx continuity (in text mode cuts.json is an empty array, so nothing is removed). Read the file in parts if it is large.
+INPUT: <ABS>/workspace/build/<ID>/youtube/sentences.corrected.json — [{idx, start, end, text, word_from, word_to}] in order (N sentences; seconds). Technical-term misrecognitions are already corrected in this file; use its spellings. Sentences whose word range falls inside cut spans listed in <ABS>/workspace/build/<ID>/youtube/cuts.json are removed speech — ignore their content but keep idx continuity (in text mode cuts.json is an empty array, so nothing is removed). Read the file in parts if it is large.
 
 OUTPUT (valid JSON only):
 - <ABS>/workspace/build/<ID>/outline.json = {"chapters": [{"id": "1", "title": "...", "summary": "...", "segments": [first_idx, last_idx], "children": [{"id": "1.1", "title": "...", "summary": "...", "segments": [a, b]}, ...]}, ...]}
@@ -130,7 +131,7 @@ Finish with a 3-line report (chapters/children counts, commands/links counts, an
 ```
 You are building a glossary for a Korean technical lecture, for learners who are watching it.
 
-INPUT: <ABS>/workspace/build/<ID>/youtube/sentences.json — [{idx, start, end, text, ...}] in order. Also read <ABS>/workspace/build/<ID>/outline.json for the chapter structure (it tells you what the lecture actually teaches). Sentences inside cut spans in <ABS>/workspace/build/<ID>/youtube/cuts.json are removed speech — ignore them (in text mode cuts.json is an empty array).
+INPUT: <ABS>/workspace/build/<ID>/youtube/sentences.corrected.json — [{idx, start, end, text, ...}] in order (technical-term misrecognitions already corrected). Also read <ABS>/workspace/build/<ID>/outline.json for the chapter structure (it tells you what the lecture actually teaches). Sentences inside cut spans in <ABS>/workspace/build/<ID>/youtube/cuts.json are removed speech — ignore them (in text mode cuts.json is an empty array).
 
 OUTPUT: <ABS>/workspace/build/<ID>/glossary.json = [{"term": "...", "definition": "...", "analogy": "...", "segment_idx": n}]  (valid JSON array only)
 
@@ -143,7 +144,7 @@ WHAT COUNTS AS A TERM:
 WHAT TO WRITE:
 - "definition": 1–2 sentences of general, correct knowledge — NOT a transcript quote. Write what the term actually means in the field, at a level a non-developer can follow. Do not contradict the lecture; if the lecturer used the term loosely, define it correctly and neutrally.
 - "analogy": ONE sentence of everyday comparison that carries the term's core mechanism (not decoration). Omit the key entirely if no honest analogy exists — a missing analogy is better than a misleading one.
-- "segment_idx": the sentence index where the term is first explained (must exist in sentences.json).
+- "segment_idx": the sentence index where the term is first explained (must exist in sentences.corrected.json).
 
 Finish with a 3-line report: number of terms, which ones you were unsure qualified, any term whose analogy you deliberately omitted. Return only that report.
 ```
