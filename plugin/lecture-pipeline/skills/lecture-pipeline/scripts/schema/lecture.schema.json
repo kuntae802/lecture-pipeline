@@ -7,15 +7,31 @@
   "required": [
     "schema_version",
     "lecture",
-    "files",
     "segments",
     "cuts",
     "chapters",
     "notes"
   ],
+  "if": {
+    "not": {
+      "properties": {
+        "lecture": {
+          "properties": {
+            "mode": {
+              "const": "text"
+            }
+          },
+          "required": ["mode"]
+        }
+      }
+    }
+  },
+  "then": {
+    "required": ["files"]
+  },
   "properties": {
     "schema_version": {
-      "const": "1.0"
+      "enum": ["1.0", "1.1"]
     },
     "lecture": {
       "type": "object",
@@ -39,6 +55,9 @@
         },
         "source_url": {
           "type": "string"
+        },
+        "mode": {
+          "enum": ["text", "video"]
         },
         "duration": {
           "type": "object",

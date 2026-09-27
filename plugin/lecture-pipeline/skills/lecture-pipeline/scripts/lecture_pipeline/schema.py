@@ -1,7 +1,8 @@
 """lecture.json 검증 — schema/lecture.schema.json 의 규칙을 stdlib 로 검사한다(의존성 0).
 
 불변식: (1) 컷 구간 안에 완전히 들어간 세그먼트는 edit == null (2) cuts 는 겹치지 않고 orig 기준 정렬
-(3) chapters.segments 범위는 segments idx 안 (4) category/confidence enum (5) schema_version == "1.0".
+(3) chapters.segments 범위는 segments idx 안 (4) category/confidence enum (5) schema_version ∈ {1.0, 1.1},
+텍스트 모드는 1.1 + 컷 없음 + edit==orig + 썸네일·files 없음.
 웹 ingest(pydantic)도 같은 스키마 파일을 읽어 같은 규칙을 적용한다(lockstep).
 """
 from __future__ import annotations
@@ -10,7 +11,9 @@ import json
 from pathlib import Path
 
 SCHEMA_PATH = Path(__file__).resolve().parent.parent / "schema" / "lecture.schema.json"
-SCHEMA_VERSION = "1.0"
+SCHEMA_VERSIONS = frozenset({"1.0", "1.1"})
+SCHEMA_VERSION = "1.1"  # assemble 이 쓰는 현재 버전
+MODES = ("text", "video")
 CATEGORIES = {"misstatement", "duplicate"}
 CONFIDENCES = {"high", "medium"}
 
@@ -29,6 +32,25 @@ MINIMAL_EXAMPLE = {
     "notes": {"commands": [], "links": []},
 }
 
+MINIMAL_TEXT_EXAMPLE = {
+    "schema_version": "1.1",
+    "lecture": {
+        "id": "v-0927-1200", "title": "t", "video_id": "v", "source_url": "https://youtu.be/v", "mode": "text",
+        "duration": {"orig": 10.0, "edit": 10.0},
+        "pipeline": {"transcript_source": "youtube_json3", "policy": "corrections_only_v1", "generated_at": "2026-09-27T00:00:00+09:00"},
+    },
+    "segments": [{"idx": 1, "text": "안녕하세요.", "t": {"orig": [0.0, 2.0], "edit": [0.0, 2.0]}}],
+    "cuts": [],
+    "chapters": [{"id": "1", "level": 1, "title": "도입", "summary": "s", "t": {"orig": [0.0, 10.0], "edit": [0.0, 10.0]},
+                  "segments": [1, 1], "children": []}],
+    "notes": {"commands": [], "links": []},
+}
+
+
+def doc_mode(doc: dict) -> str:
+    """lecture.mode — 없으면 영상 모드(1.0 문서 호환)."""
+    return (doc.get("lecture") or {}).get("mode") or "video"
+
 
 def _span(v) -> bool:
     return isinstance(v, list) and len(v) == 2 and all(isinstance(x, (int, float)) for x in v) and v[0] <= v[1]
@@ -36,9 +58,17 @@ def _span(v) -> bool:
 
 def validate_lecture(doc: dict) -> list[str]:
     errs: list[str] = []
-    if doc.get("schema_version") != SCHEMA_VERSION:
-        errs.append(f"schema_version must be '{SCHEMA_VERSION}'")
-    missing = [k for k in ("lecture", "files", "segments", "cuts", "chapters", "notes") if k not in doc]
+    ver = doc.get("schema_version")
+    if ver not in SCHEMA_VERSIONS:
+        errs.append(f"schema_version must be one of {sorted(SCHEMA_VERSIONS)}")
+    mode = doc_mode(doc)
+    if mode not in MODES:
+        errs.append(f"lecture.mode must be one of {MODES}, got {mode!r}")
+    text = mode == "text"
+    if text and ver != "1.1":
+        errs.append("text mode requires schema_version '1.1'")
+    required = ("lecture", "segments", "cuts", "chapters", "notes") + (() if text else ("files",))
+    missing = [k for k in required if k not in doc]
     if missing:
         errs.extend(f"missing top-level '{k}'" for k in missing)
         return errs
@@ -47,9 +77,10 @@ def validate_lecture(doc: dict) -> list[str]:
     for k in ("id", "title", "video_id", "source_url", "duration", "pipeline"):
         if k not in lec:
             errs.append(f"lecture.{k} missing")
-    for k in ("original", "edited", "thumbs_dir"):
-        if k not in doc["files"]:
-            errs.append(f"files.{k} missing")
+    if not text:
+        for k in ("original", "edited", "thumbs_dir"):
+            if k not in doc["files"]:
+                errs.append(f"files.{k} missing")
 
     cuts = [c for c in doc["cuts"] if _span(c.get("orig"))]
     for i, c in enumerate(doc["cuts"]):
@@ -123,6 +154,37 @@ def validate_lecture(doc: dict) -> list[str]:
                 t = g.get("t") or {}
                 if not _span(t.get("orig")) or (t.get("edit") is not None and not _span(t.get("edit"))):
                     errs.append(f"glossary[{i}].t invalid")
+
+    if text:
+        if doc["cuts"]:
+            errs.append("text mode must have no cuts")
+        dur = lec.get("duration") or {}
+        if dur.get("edit") != dur.get("orig"):
+            errs.append("text mode: duration.edit must equal duration.orig")
+
+        def same(t: dict | None, path: str) -> None:
+            t = t or {}
+            if t.get("edit") != t.get("orig"):
+                errs.append(f"{path}.t: text mode edit must equal orig")
+
+        for i, s in enumerate(doc["segments"]):
+            same(s.get("t"), f"segments[{i}]")
+
+        def walk_text(ch: dict, path: str) -> None:
+            same(ch.get("t"), path)
+            if "thumb" in ch:
+                errs.append(f"{path}: text mode chapters have no thumb")
+            for j, sub in enumerate(ch.get("children") or []):
+                walk_text(sub, f"{path}.children[{j}]")
+
+        for i, ch in enumerate(doc["chapters"]):
+            walk_text(ch, f"chapters[{i}]")
+        for k in ("commands", "links"):
+            for i, n in enumerate(doc["notes"].get(k, [])):
+                same(n.get("t"), f"notes.{k}[{i}]")
+        for i, g in enumerate(doc.get("glossary") or []):
+            same(g.get("t"), f"glossary[{i}]")
+
     return errs
 
 

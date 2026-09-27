@@ -152,3 +152,27 @@ def test_a_new_run_in_the_same_folder_does_not_revive_the_previous_job(tmp_path,
     jobs.report("fetch", "running")
     assert new != old
     assert all(s["path"].endswith(new) for s in _Stub.seen), "앞 작업 id 로 간 보고가 있다"
+
+
+def test_start_records_the_mode(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    jobs.start("abc", "https://youtu.be/abc", mode="text")
+    assert jobs.load()["mode"] == "text"
+
+
+def test_report_carries_the_mode(tmp_path, monkeypatch, stub):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("VCU_API", stub)
+    jobs.start("abc", "u", mode="text")
+    jobs.report("preprocess", "running")
+    assert _Stub.seen[-1]["body"]["mode"] == "text"
+
+
+def test_job_file_without_mode_reports_video(tmp_path, monkeypatch, stub):
+    """0.9.0 에서 만든 .job 을 이어서 쓰는 경우."""
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("VCU_API", stub)
+    (tmp_path / "workspace").mkdir()
+    (tmp_path / "workspace/.job").write_text('{"job_id": "abc-0927-1200", "video_id": "abc", "url": "u"}', encoding="utf-8")
+    jobs.report("merge", "running")
+    assert _Stub.seen[-1]["body"]["mode"] == "video"

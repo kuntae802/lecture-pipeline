@@ -22,6 +22,39 @@ def _setup(tmp_path, cuts_by_chunk, manifest=MANIFEST):
     return b, c
 
 
+def _setup_no_cuts(tmp_path, n_chunks):
+    b = tmp_path / "build"; c = tmp_path / "chunks"; b.mkdir(); c.mkdir()
+    (b / "words.json").write_text(json.dumps({"source": "youtube_json3", "words": _words(n_chunks * 20)}), encoding="utf-8")
+    manifest = [{"n": i, "file": f"{i:02d}.md", "word_from": (i - 1) * 20 + 1, "word_to": i * 20,
+                 "ctx_word_from": (i - 1) * 20 + 1, "start": (i - 1) * 20, "end": i * 20}
+                for i in range(1, n_chunks + 1)]
+    (c / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+    return b, c
+
+
+def test_no_cuts_mode_needs_only_corrections(tmp_path):
+    build, chunks = _setup_no_cuts(tmp_path, n_chunks=2)          # 기존 헬퍼
+    for n in (1, 2):
+        (chunks / f"{n:02d}.corrections.json").write_text("[]", encoding="utf-8")
+    cuts, corr, errs = merge(build, chunks, no_cuts=True)
+    assert errs == [] and cuts == []
+
+
+def test_no_cuts_mode_rejects_a_missing_corrections_file(tmp_path):
+    build, chunks = _setup_no_cuts(tmp_path, n_chunks=2)
+    (chunks / "01.corrections.json").write_text("[]", encoding="utf-8")
+    _, _, errs = merge(build, chunks, no_cuts=True)
+    assert errs == ["chunk 02: corrections file missing"]
+
+
+def test_no_cuts_mode_ignores_stray_cut_files(tmp_path):
+    build, chunks = _setup_no_cuts(tmp_path, n_chunks=1)
+    (chunks / "01.corrections.json").write_text("[]", encoding="utf-8")
+    (chunks / "01.cuts.json").write_text('[{"from_idx": 1, "to_idx": 3, "category": "duplicate"}]', encoding="utf-8")
+    cuts, _, errs = merge(build, chunks, no_cuts=True)
+    assert errs == [] and cuts == []
+
+
 def test_merge_sorts_and_computes_spans(tmp_path):
     b, c = _setup(tmp_path, {2: [{"from_idx": 30, "to_idx": 32, "category": "duplicate", "confidence": "medium", "note": "n"}],
                              1: [{"from_idx": 5, "to_idx": 7, "category": "misstatement", "confidence": "high", "note": "n"}]})

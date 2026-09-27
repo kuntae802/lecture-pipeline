@@ -1,13 +1,13 @@
 ---
 name: lecture-pipeline
-description: 유튜브 강의 URL → 편집본 mp4 + lecture.json + 챕터 썸네일. 기계 단계는 동봉된 파이썬 스크립트(표준 라이브러리만), 판단 단계(컷 편집·목차 구조화)는 이 문서의 브리프로 Opus 서브에이전트를 병렬로 띄운다. 사용 "/lecture-pipeline <youtube-url>".
+description: 유튜브 강의 URL → 정제 전사·목차·챕터 요약·용어집(lecture.json)을 만들어 뷰어 웹에 올린다. --include-video 를 붙이면 실언·중복 발화를 잘라낸 편집본 mp4 까지 만든다. 기계 단계는 동봉된 파이썬 스크립트(표준 라이브러리만), 판단 단계는 이 문서의 브리프로 Opus 서브에이전트를 병렬로 띄운다. 사용 "/lecture-pipeline <youtube-url> [--include-video]".
 ---
 
 # lecture-pipeline
 
-강의 영상에서 **실언을 정정한 앞부분과 의미가 중복된 재발화만** 잘라낸 편집본을 만들고, 전체를 목차·요약·검색 가능한 전사로 구조화한다. 결과물을 뷰어 웹에 업로드하면 목차 점프·본문 검색·편집 검토가 되는 페이지가 된다.
+기본은 **텍스트 정리**다 — 강의의 자동자막에서 기술 용어 오인식을 교정하고, 전체를 목차·챕터 요약·용어집·검색 가능한 전사로 구조화해 뷰어 웹에 올린다(영상은 받지도 만들지도 않는다). `--include-video` 를 붙이면 여기에 더해 **실언을 정정한 앞부분과 의미가 중복된 재발화만** 잘라낸 편집본 mp4 까지 만들어, 목차 점프·본문 검색·편집 검토가 되는 영상 페이지가 된다.
 
-**원칙: 소리가 아니라 발화를 편집한다.** 필러("어/음/그")·더듬·멈춤·잡음은 건드리지 않는다. 모든 단계가 파일을 남기므로 실패한 단계부터 다시 돌린다. 판단 단계의 출력은 기계 검증을 통과해야만 다음으로 간다.
+**원칙(영상 모드): 소리가 아니라 발화를 편집한다.** 필러("어/음/그")·더듬·멈춤·잡음은 건드리지 않는다. 모든 단계가 파일을 남기므로 실패한 단계부터 다시 돌린다. 판단 단계의 출력은 기계 검증을 통과해야만 다음으로 간다.
 
 ## 경로 규칙 (중요)
 
@@ -15,56 +15,80 @@ description: 유튜브 강의 URL → 편집본 mp4 + lecture.json + 챕터 썸�
 - `$PY` = `python3` (윈도우는 `python`). 0단계 `doctor` 가 어느 쪽인지 알려준다.
 - **작업 산출물은 전부 현재 작업 폴더(cwd) 아래**에 만들어진다. 코드는 `$SKILL` 안에만 있고, 사용자는 아무 빈 폴더에서나 실행하면 된다.
 - 아래에서 `<ID>` = 유튜브 video id(1단계가 URL 에서 뽑아 폴더 이름으로 쓴다). **사용자에게 강의 번호를 묻지 않는다** — 뷰어에 올라갈 강의 id 는 8단계가 `<ID>-<MMDD-HHMM>` 으로 자동 생성한다.
-- **옵션:** 호출에 `--no-glossary` 가 붙으면 6.5단계(용어집)를, `--no-upload` 가 붙으면 9단계(업로드)를 건너뛴다. 둘 다 기본은 켜짐.
+- **옵션:** 호출에 `--include-video` 가 붙으면 영상 모드(편집본 mp4 까지), 없으면 텍스트 모드(기본)다. `--no-glossary` 가 붙으면 6.5단계(용어집)를, `--no-upload` 가 붙으면 9단계(업로드)를 건너뛴다. 둘 다 기본은 켜짐.
+- **모드:** 이하 `[텍스트]`/`[영상]` 표시가 붙은 지시는 그 모드에서만 따른다. **각 명령의 모드 플래그는 아래 `[텍스트]`/`[영상]` 줄을 그대로 쓴다** — 명령들은 `workspace/.job` 에서 모드를 읽지 않는다(진행도 보고만 `.job` 의 모드를 쓴다). `doctor`·`fetch`·`assemble` 은 플래그를 빠뜨리면 텍스트 모드가 기본이고, `merge` 는 텍스트 모드에서 `--no-cuts` 를 붙인다. 영상 모드는 `doctor --mode video`, `fetch --video`, `assemble --mode video` 를 반드시 붙인다 — `assemble` 에 `--original`/`--edited` 를 주면서 `--mode video` 를 빠뜨리면 오류로 멈춘다.
 - **뷰어:** 완성본을 올릴 뷰어 주소는 스킬에 내장돼 있다 — 설치한 사람이 따로 설정할 것이 없다(다른 뷰어에 올리려면 `VCU_API` 환경변수로 덮는다).
 - **진행도:** `lp.py` 명령이 자기 단계를 뷰어에 자동으로 알린다(뷰어 강의 목록에 작업 카드가 뜬다). 아래 4·6·6.5단계는 `lp.py` 밖에서 도는 판단 단계라 **직접 알려야** 그 구간이 화면에서 멈춘 것처럼 보이지 않는다.
 
 ## 0단계 — 환경 점검 (항상 먼저)
 
 ```
-$PY "$SKILL/scripts/lp.py" doctor
+[텍스트] $PY "$SKILL/scripts/lp.py" doctor --mode text
+[영상]   $PY "$SKILL/scripts/lp.py" doctor --mode video
 ```
 
 - 전부 OK 면 1단계로 간다.
 - 빠진 게 있으면 doctor 가 **그 OS 에 맞는 설치 명령**을 출력한다. 그 명령을 사용자에게 보여주고 **승인을 받아 실행**한 뒤 doctor 를 다시 돌린다. 사용자 승인 없이 설치 명령을 실행하지 않는다.
-- GPU 유무와 무관하게 렌더는 CPU 로도 충분히 빠르다(3시간 강의 실측 약 13분, 기기에 따라 20~40분). 7단계 전에 예상 시간을 알린다.
+- [영상] GPU 유무와 무관하게 렌더는 CPU 로도 충분히 빠르다(3시간 강의 실측 약 13분, 기기에 따라 20~40분). 7단계 전에 예상 시간을 알린다.
 
 ## 단계
 
-1. **확보** — `$PY "$SKILL/scripts/lp.py" fetch <url>`
-   → `workspace/raw/<ID>/{source.mp4, source.ko.json3, source.info.json}` (이미 있으면 건너뜀 — 같은 영상을 다시 돌리면 재사용된다)
+1. **확보** — 이미 받은 파일은 건너뛴다(같은 영상을 다시 돌리면 재사용된다).
+   - [텍스트] `$PY "$SKILL/scripts/lp.py" fetch <url>` → `workspace/raw/<ID>/{source.ko.json3, source.info.json}`
+   - [영상] `$PY "$SKILL/scripts/lp.py" fetch <url> --video` → `workspace/raw/<ID>/{source.ko.json3, source.info.json, source.mp4}`
 2. **전처리** — `$PY "$SKILL/scripts/lp.py" preprocess --source youtube_json3 --input workspace/raw/<ID>/source.ko.json3 --out workspace/build/<ID>/youtube --title "<ID>"`
    → `words.json`·`sentences.json`·`indexed.md`·`stats.json`
 3. **청크** — `$PY "$SKILL/scripts/lp.py" chunk --build workspace/build/<ID>/youtube --out workspace/build/<ID>/chunks`
    → `NN.md` ×N + `manifest.json` (3시간 강의면 19개 안팎)
-4. **편집 패스 (판단)** — `manifest.json` 의 청크마다 Opus 서브에이전트 1개를 **8개씩 병렬**로 띄운다(`Agent(model="opus")`). 브리프는 아래 [편집 브리프]에 절대경로만 채워 그대로 전달. 산출 `chunks/NN.cuts.json`·`chunks/NN.corrections.json`. 끝나면 파일 수가 청크 수와 같은지 확인한다.
+4. **교정·편집 패스 (판단)** — `manifest.json` 의 청크마다 Opus 서브에이전트 1개를 **8개씩 병렬**로 띄운다(`Agent(model="opus")`). 브리프에 절대경로만 채워 그대로 전달한다.
+   - [텍스트] 브리프 = 아래 [교정 브리프]. 산출 `chunks/NN.corrections.json`. 끝나면 corrections 파일 수가 청크 수와 같은지 확인한다.
+   - [영상] 브리프 = 아래 [편집 브리프]. 산출 `chunks/NN.cuts.json`·`chunks/NN.corrections.json`. 끝나면 두 파일 수가 각각 청크 수와 같은지 확인한다.
    - 배치를 하나 마칠 때마다 진행도를 알린다 — `$PY "$SKILL/scripts/lp.py" progress --step edit --detail "8/19"` (완료 청크 수/전체).
-5. **병합·검증** — `$PY "$SKILL/scripts/lp.py" merge --build workspace/build/<ID>/youtube --chunks workspace/build/<ID>/chunks`
-   → `cuts.json`·`corrections.json`. 에러가 나면 **그 청크만** 4단계를 다시 돌린다(브리프 끝에 에러 메시지 원문을 붙인다). 첫 실행이면 컷 목록을 사용자에게 한 번 보여준다.
+5. **병합·검증**
+   - [텍스트] `$PY "$SKILL/scripts/lp.py" merge --build workspace/build/<ID>/youtube --chunks workspace/build/<ID>/chunks --no-cuts` → `corrections.json` + 빈 `cuts.json`
+   - [영상] `$PY "$SKILL/scripts/lp.py" merge --build workspace/build/<ID>/youtube --chunks workspace/build/<ID>/chunks` → `cuts.json`·`corrections.json`. 첫 실행이면 컷 목록을 사용자에게 한 번 보여준다.
+   - 에러가 나면 **그 청크만** 4단계를 다시 돌린다(브리프 끝에 에러 메시지 원문을 붙인다).
 6. **구조화 패스 (판단)** — 먼저 `$PY "$SKILL/scripts/lp.py" progress --step outline` 로 시작을 알리고, Opus 서브에이전트 1개. 브리프는 아래 [구조화 브리프]. 산출 `workspace/build/<ID>/outline.json`·`notes.json`. 문장 커버리지가 어긋나면 8단계가 거부하므로, 에러를 붙여 1회 재실행한다. 끝나면 `... progress --step outline --status done`.
 6.5. **용어집 패스 (판단, 선택)** — `--no-glossary` 가 아니면 `... progress --step glossary` 로 알린 뒤 Opus 서브에이전트 1개를 더 띄운다. 브리프는 아래 [용어집 브리프]. 산출 `workspace/build/<ID>/glossary.json`. 실패해도 파이프라인은 계속 간다(8단계에서 `--glossary` 를 빼면 그만).
-7. **렌더** — `$PY "$SKILL/scripts/lp.py" render --original workspace/raw/<ID>/source.mp4 --cuts workspace/build/<ID>/youtube/cuts.json --out workspace/out/<ID>/edited.mp4`
+7. **[영상] 렌더** — 텍스트 모드는 이 단계를 실행하지도 보고하지도 않는다(8단계로 간다). `$PY "$SKILL/scripts/lp.py" render --original workspace/raw/<ID>/source.mp4 --cuts workspace/build/<ID>/youtube/cuts.json --out workspace/out/<ID>/edited.mp4`
    - 인코더 기본값 `auto` = 코어 8개 이상이면 libx264(실측상 GPU 보다 빠르고 파일도 작다), 그 미만이면 NVENC(실제 동작 확인 후). `--encoder` 로 강제 지정할 수 있다. 오래 걸리므로 백그라운드로 돌리고 로그를 남긴다.
    - 원격 GPU 호스트가 있으면 `--ssh-host user@host --ssh-port 22` 를 덧붙인다(그 호스트의 컨테이너에서 렌더하고 결과만 받아온다).
-8. **조립** — 원본을 산출물 폴더에 `original.mp4` 로 하드링크(또는 복사)한 뒤
-   `$PY "$SKILL/scripts/lp.py" assemble --build workspace/build/<ID>/youtube --outline workspace/build/<ID>/outline.json --notes workspace/build/<ID>/notes.json --info workspace/raw/<ID>/source.info.json --original workspace/raw/<ID>/source.mp4 --edited workspace/out/<ID>/edited.mp4 --out workspace/out/<ID>` (용어집을 만들었으면 `--glossary workspace/build/<ID>/glossary.json` 를 덧붙인다)
-   → `lecture.json` + `thumbs/chNN.jpg`
+8. **조립** — 용어집을 만들었으면 어느 모드든 `--glossary workspace/build/<ID>/glossary.json` 를 덧붙인다.
+   - [텍스트] `$PY "$SKILL/scripts/lp.py" assemble --mode text --build workspace/build/<ID>/youtube --outline workspace/build/<ID>/outline.json --notes workspace/build/<ID>/notes.json --info workspace/raw/<ID>/source.info.json --out workspace/out/<ID>`
+     → `lecture.json` (원본 하드링크·썸네일 없음)
+   - [영상] 원본을 산출물 폴더에 `original.mp4` 로 하드링크(또는 복사)한 뒤
+     `$PY "$SKILL/scripts/lp.py" assemble --mode video --build workspace/build/<ID>/youtube --outline workspace/build/<ID>/outline.json --notes workspace/build/<ID>/notes.json --info workspace/raw/<ID>/source.info.json --original workspace/raw/<ID>/source.mp4 --edited workspace/out/<ID>/edited.mp4 --out workspace/out/<ID>`
+     → `lecture.json` + `thumbs/chNN.jpg`
 9. **업로드** — `$PY "$SKILL/scripts/lp.py" upload --out workspace/out/<ID>`
-   → 뷰어 주소는 내장돼 있으므로 그대로 실행하면 된다. 썸네일 zip 을 알아서 만들어 함께 올리고,
+   → 뷰어 주소는 내장돼 있으므로 그대로 실행하면 된다. 텍스트 모드는 `lecture.json` 하나만, 영상 모드는 원본·편집본·`lecture.json`·썸네일 zip(알아서 만든다)을 올리고,
    적재·임베딩이 끝날 때까지 기다린 뒤 강의 id 를 출력한다. 끝나면 뷰어에서 볼 수 있는 주소를 사용자에게 알린다.
-   토큰을 요구하는 뷰어면 `VCU_API_TOKEN` 을 설정한다(없으면 헤더를 생략한다).
+   - [텍스트] `https://kuntae802.mooo.com/vcu_lecture_system_proposal/text/lectures/<강의 id>`
+   - [영상] `https://kuntae802.mooo.com/vcu_lecture_system_proposal/video/lectures/<강의 id>`
+   - `VCU_API` 로 뷰어를 바꾼 경우에는 그 값에서 끝의 `/api` 를 뗀 주소를 기준으로 같은 경로(`/text/lectures/<강의 id>` 또는 `/video/lectures/<강의 id>`)를 붙인다.
 
-   `--no-upload` 로 건너뛰었거나 업로드가 실패하면, 산출물 폴더 `workspace/out/<ID>/` 를 알리고 뷰어 웹의
-   **업로드 화면**에서 아래 3개(+선택 1개)를 올리게 안내한다 — 산출물은 이미 다 만들어져 있으므로 파이프라인을 다시 돌릴 필요가 없다.
-   - `original.mp4` (원본 — 편집 검토 화면의 대조용)
-   - `edited.mp4` (편집본 — 플레이어 본체)
-   - `lecture.json` (전사·컷·목차·노트)
-   - `thumbs.zip` (선택 — 챕터 썸네일. 없으면 목차에 회색 박스)
-   썸네일 zip 은 `$PY -c "import shutil;shutil.make_archive('workspace/out/<ID>/thumbs','zip','workspace/out/<ID>','thumbs')"` 로 만든다.
+   `--no-upload` 로 건너뛰었거나 업로드가 실패하면, 산출물 폴더 `workspace/out/<ID>/` 를 알리고, 나중에 `$PY "$SKILL/scripts/lp.py" upload --out workspace/out/<ID>` 로 다시 올리면 된다고 안내한다(파이프라인을 다시 돌릴 필요 없음).
 
    같은 영상을 다시 올려도 **덮어쓰지 않고 새 강의로 쌓인다**(강의 id 가 조립 때마다 새로 생긴다).
 
-## [편집 브리프] — 청크마다 `<ABS>`(작업 폴더 절대경로)·`<ID>`·`NN` 만 바꿔 그대로 전달
+## [교정 브리프] — [텍스트] 청크마다 `<ABS>`(작업 폴더 절대경로)·`<ID>`·`NN` 만 바꿔 그대로 전달
+
+```
+You are the terminology-correction pass of a Korean technical-lecture transcript pipeline. Your ONLY job: fix auto-caption misrecognitions of technical terms and product names. You do not cut, summarize, or rewrite anything.
+
+INPUT: <ABS>/workspace/build/<ID>/chunks/NN.md — `[N] [start-end] word` lines (N = global word index, seconds). The `## CONTEXT` block is read-only; correct only inside `## EDITABLE RANGE`.
+
+OUTPUT: <ABS>/workspace/build/<ID>/chunks/NN.corrections.json — valid JSON array only (empty array [] is fine):
+[{"idx": int, "from": "<word as written>", "to": "<corrected word>"}]
+
+RULES:
+1. ONLY technical terms / product names that are clearly misrecognized (e.g. 오프스→오푸스, 출론→추론, 아크다운→마크다운, 안솔로→앤트로픽).
+2. One token → one token. No grammar or particle fixes, no expansions, no fixes of ordinary words, no spacing changes.
+3. idx must exist in the input and lie inside the editable range. When unsure, leave it.
+
+Finish with a 2-line report: number of corrections (a few examples), anything you were unsure about. Return only that report.
+```
+
+## [편집 브리프] — [영상] 청크마다 `<ABS>`(작업 폴더 절대경로)·`<ID>`·`NN` 만 바꿔 그대로 전달
 
 ```
 You are the editorial pass of a Korean technical-lecture editing pipeline. Your ONLY job: find places where the lecturer (a) misspoke and then corrected themself, or (b) abandoned an attempt and re-delivered the same content, and mark the abandoned/incorrect span for cutting. Nothing else is cut.
@@ -90,7 +114,7 @@ Finish with a 3-line report: number of cuts (with idx ranges, time ranges, categ
 ```
 You are structuring a Korean technical lecture transcript into a two-level outline.
 
-INPUT: <ABS>/workspace/build/<ID>/youtube/sentences.json — [{idx, start, end, text, word_from, word_to}] in order (N sentences; seconds). Sentences whose word range falls inside cut spans listed in <ABS>/workspace/build/<ID>/youtube/cuts.json are removed speech — ignore their content but keep idx continuity. Read the file in parts if it is large.
+INPUT: <ABS>/workspace/build/<ID>/youtube/sentences.json — [{idx, start, end, text, word_from, word_to}] in order (N sentences; seconds). Sentences whose word range falls inside cut spans listed in <ABS>/workspace/build/<ID>/youtube/cuts.json are removed speech — ignore their content but keep idx continuity (in text mode cuts.json is an empty array, so nothing is removed). Read the file in parts if it is large.
 
 OUTPUT (valid JSON only):
 - <ABS>/workspace/build/<ID>/outline.json = {"chapters": [{"id": "1", "title": "...", "summary": "...", "segments": [first_idx, last_idx], "children": [{"id": "1.1", "title": "...", "summary": "...", "segments": [a, b]}, ...]}, ...]}
@@ -106,7 +130,7 @@ Finish with a 3-line report (chapters/children counts, commands/links counts, an
 ```
 You are building a glossary for a Korean technical lecture, for learners who are watching it.
 
-INPUT: <ABS>/workspace/build/<ID>/youtube/sentences.json — [{idx, start, end, text, ...}] in order. Also read <ABS>/workspace/build/<ID>/outline.json for the chapter structure (it tells you what the lecture actually teaches). Sentences inside cut spans in <ABS>/workspace/build/<ID>/youtube/cuts.json are removed speech — ignore them.
+INPUT: <ABS>/workspace/build/<ID>/youtube/sentences.json — [{idx, start, end, text, ...}] in order. Also read <ABS>/workspace/build/<ID>/outline.json for the chapter structure (it tells you what the lecture actually teaches). Sentences inside cut spans in <ABS>/workspace/build/<ID>/youtube/cuts.json are removed speech — ignore them (in text mode cuts.json is an empty array).
 
 OUTPUT: <ABS>/workspace/build/<ID>/glossary.json = [{"term": "...", "definition": "...", "analogy": "...", "segment_idx": n}]  (valid JSON array only)
 
@@ -126,7 +150,8 @@ Finish with a 3-line report: number of terms, which ones you were unsure qualifi
 
 ## 참고
 
-- 3시간 강의 기준 실측(1강): 전처리 수 초 · 편집 패스 약 10분(19청크 병렬) · 구조화 약 8분 · 렌더 약 12~14분(libx264 4스레드 기준 13분) · 컷 63건/2분 42초 제거.
-- 편집 패스는 Opus 서브에이전트를 많이 쓴다 — 3시간 강의 한 편에 대략 150만 토큰. 사용자에게 미리 알린다.
+- 3시간 강의 기준 실측(1강): 전처리 수 초 · 편집 패스 약 10분(19청크 병렬) · 구조화 약 8분 · 컷 63건/2분 42초 제거.
+- [영상] 렌더 실측 약 12~14분(libx264 4스레드 기준 13분).
+- 판단 단계는 Opus 서브에이전트를 많이 쓴다 — 편집 패스(영상 모드)는 3시간 강의 한 편에 대략 150만 토큰. 교정 패스(텍스트 모드)는 컷 판단이 없어 그보다 훨씬 적게 든다(실측 전). 사용자에게 미리 알린다.
 - 용어집은 서브에이전트 1개(3시간 강의 기준 20만 토큰 안팎)를 더 쓴다. 비용을 아끼려면 `--no-glossary`.
 - 사람이 읽을 설치·사용 안내는 `$SKILL/README.md`.

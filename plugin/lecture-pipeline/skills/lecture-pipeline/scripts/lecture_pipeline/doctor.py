@@ -64,7 +64,7 @@ WINDOWS_NOTE = (
 )
 
 
-def check() -> dict:
+def check(mode: str = "video") -> dict:
     os_key = _os_key()
     py_ok = sys.version_info >= MIN_PY
     ffmpeg = shutil.which("ffmpeg")
@@ -74,7 +74,7 @@ def check() -> dict:
     deno = shutil.which("deno")
 
     nvenc = False
-    if ffmpeg:
+    if ffmpeg and mode == "video":  # 텍스트 모드는 렌더가 없으니 느린 인코딩 프로브를 건너뛴다
         # 목록 조회가 아니라 실제 인코딩 프로브 — GPU 없는 PC 에서도 목록에는 h264_nvenc 가 뜬다.
         from .render import nvenc_usable
 
@@ -92,7 +92,8 @@ def check() -> dict:
     }
 
 
-def report(res: dict) -> int:
+def report(res: dict, mode: str = "text") -> int:
+    video = mode == "video"
     os_key = res["os"]
     tips = INSTALL.get(os_key, INSTALL["linux"])
     lines: list[str] = [f"환경: {platform.system()} ({os_key}) · python {res['python']['version']}", ""]
@@ -104,9 +105,12 @@ def report(res: dict) -> int:
     row("python", res["python"]["ok"], f"{res['python']['version']} (필요 {MIN_PY[0]}.{MIN_PY[1]}+) · 실행 명령 `{res['python']['command']}`")
     if not res["python"]["ok"]:
         missing.append(("python", tips["python"]))
-    row("ffmpeg", res["ffmpeg"]["ok"], res["ffmpeg"]["version"] or "ffmpeg/ffprobe 둘 다 필요")
-    if not res["ffmpeg"]["ok"]:
-        missing.append(("ffmpeg", tips["ffmpeg"]))
+    if video:
+        row("ffmpeg", res["ffmpeg"]["ok"], res["ffmpeg"]["version"] or "ffmpeg/ffprobe 둘 다 필요")
+        if not res["ffmpeg"]["ok"]:
+            missing.append(("ffmpeg", tips["ffmpeg"]))
+    else:
+        row("ffmpeg", True, (res["ffmpeg"]["version"] or "없음") + " — 영상 모드에만 필요(--include-video)")
     row("yt-dlp", res["yt-dlp"]["ok"], res["yt-dlp"]["version"] or "유튜브 원본·자막 취득에 필요")
     if not res["yt-dlp"]["ok"]:
         missing.append(("yt-dlp", tips["yt-dlp"]))
@@ -114,11 +118,12 @@ def report(res: dict) -> int:
     if not res["js_runtime"]["ok"]:
         missing.append(("JS 런타임(node/deno)", tips["js"]))
 
-    lines.append("")
-    if res["gpu_nvenc"]:
-        lines.append("  GPU: h264_nvenc 사용 가능(코어가 적은 기기에서 자동 사용).")
-    else:
-        lines.append("  GPU: NVENC 없음 → libx264(CPU)로 렌더합니다. 3시간 강의 기준 실측 약 13분(4스레드), 기기에 따라 20~40분.")
+    if video:
+        lines.append("")
+        if res["gpu_nvenc"]:
+            lines.append("  GPU: h264_nvenc 사용 가능(코어가 적은 기기에서 자동 사용).")
+        else:
+            lines.append("  GPU: NVENC 없음 → libx264(CPU)로 렌더합니다. 3시간 강의 기준 실측 약 13분(4스레드), 기기에 따라 20~40분.")
 
     from . import config
     lines += ["", f"  뷰어: {config.api()}" + ("  (내장 기본값)" if config.is_default() else "  (VCU_API 로 지정됨)"),
@@ -142,12 +147,15 @@ def main(argv: list[str] | None = None) -> None:
     ap = argparse.ArgumentParser(prog="lp doctor", description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--json", action="store_true", help="점검 결과를 JSON 으로 출력(자동 처리용)")
+    ap.add_argument("--mode", choices=("text", "video"), default="text",
+                    help="점검 기준 모드(기본 text — ffmpeg 불필요)")
     a = ap.parse_args(argv)
-    res = check()
+    res = check(a.mode)
     if a.json:
         print(json.dumps(res, ensure_ascii=False, indent=2))
-        raise SystemExit(0 if all(res[k]["ok"] for k in ("python", "ffmpeg", "yt-dlp", "js_runtime")) else 1)
-    raise SystemExit(report(res))
+        need = ("python", "yt-dlp", "js_runtime") + (("ffmpeg",) if a.mode == "video" else ())
+        raise SystemExit(0 if all(res[k]["ok"] for k in need) else 1)
+    raise SystemExit(report(res, a.mode))
 
 
 if __name__ == "__main__":

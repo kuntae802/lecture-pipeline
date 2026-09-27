@@ -4,13 +4,18 @@
 이 파일이 있는 폴더를 import 경로에 넣으므로 **어느 위치에서 실행해도** 동작한다.
 작업 산출물은 항상 "현재 작업 폴더(cwd)" 기준으로 만들어지고, 코드는 이 스킬 폴더 안에만 있다.
 
-    python3 <이 파일> doctor
-    python3 <이 파일> fetch <youtube-url>
+    python3 <이 파일> doctor [--mode text|video]
+    python3 <이 파일> fetch <youtube-url> [--video]
     python3 <이 파일> preprocess --source youtube_json3 --input ... --out ...
     python3 <이 파일> chunk --build ... --out ...
-    python3 <이 파일> merge --build ... --chunks ...
+    python3 <이 파일> merge --build ... --chunks ... [--no-cuts]
     python3 <이 파일> render --original ... --cuts ... --out ...
-    python3 <이 파일> assemble --build ... --outline ... --notes ... --info ... --original ... --edited ... --out ...
+    python3 <이 파일> assemble --mode text --build ... --outline ... --notes ... --info ... --out ...
+    python3 <이 파일> assemble --mode video --build ... --outline ... --notes ... --info ... --original ... --edited ... --out ...
+    python3 <이 파일> upload --out ...
+
+모드 기본값은 text(영상 없음)다. 영상 모드는 doctor --mode video · fetch --video · assemble --mode video 를
+명령마다 명시한다(명령들은 .job 에서 모드를 읽지 않는다 — 진행도 보고만 읽는다).
 
 의존성: 파이썬 표준 라이브러리만(서드파티 패키지 0) + 외부 바이너리 yt-dlp·ffmpeg/ffprobe.
 """
@@ -23,14 +28,14 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 COMMANDS = {
     "doctor": ("lecture_pipeline.doctor", "실행 환경 점검 + OS별 설치 안내"),
-    "fetch": ("lecture_pipeline.fetch", "유튜브 원본 mp4·한국어 자동자막·메타 취득"),
+    "fetch": ("lecture_pipeline.fetch", "한국어 자동자막·메타 취득(기본 text) — --video 면 원본 mp4 까지"),
     "preprocess": ("lecture_pipeline.preprocess", "자막 → 단어/문장/LLM 입력용 인덱스"),
     "chunk": ("lecture_pipeline.chunk", "11분 창으로 분할(문장 경계 유지)"),
-    "merge": ("lecture_pipeline.merge_edits", "청크별 편집 결과 병합·검증"),
+    "merge": ("lecture_pipeline.merge_edits", "청크별 교정·편집 결과 병합·검증(--no-cuts = 텍스트 모드, 교정만)"),
     "edl": ("lecture_pipeline.edl", "(고급) 원격 렌더용 셸 스크립트 생성"),
     "render": ("lecture_pipeline.render", "컷 반영 편집본 렌더(로컬 ffmpeg, GPU 있으면 자동 사용)"),
-    "assemble": ("lecture_pipeline.assemble", "lecture.json + 챕터 썸네일 조립"),
-    "upload": ("lecture_pipeline.upload", "산출물 폴더를 뷰어 웹에 업로드(VCU_API 필요)"),
+    "assemble": ("lecture_pipeline.assemble", "lecture.json 조립(기본 text) — --mode video 면 챕터 썸네일·편집본 길이까지"),
+    "upload": ("lecture_pipeline.upload", "산출물 폴더를 뷰어 웹에 업로드(뷰어 주소 내장 — VCU_API 로 덮어쓰기 가능)"),
     "progress": ("lecture_pipeline.jobs", "작업 진행도 보고(판단 단계용 — lp.py 밖에서 도는 단계)"),
 }
 

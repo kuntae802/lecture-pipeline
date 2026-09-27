@@ -1,6 +1,6 @@
 """산출물 폴더 → 뷰어 웹 업로드. 표준 라이브러리만 쓴다.
 
-사용: python3 <스킬>/scripts/lp.py upload --out workspace/out/<ID> [--api URL] [--token T]
+사용: python3 <스킬>/scripts/lp.py upload --out workspace/out/<ID> [--api URL]
       (--api 를 생략하면 VCU_API 환경변수, 그것도 없으면 config.DEFAULT_API 로 간다)
 
 원본·편집본이 합쳐 1~2GB 라 **파일을 메모리에 올리지 않고 흘려보낸다** — multipart 본문의
@@ -26,6 +26,7 @@ from pathlib import Path
 from urllib.parse import urlsplit
 
 from . import config, jobs
+from .schema import doc_mode
 
 CHUNK = 1 << 20
 POLL_EVERY = 5.0
@@ -55,8 +56,11 @@ def ensure_thumbs_zip(out_dir: Path) -> Path | None:
 
 
 def parts_for(out_dir: Path) -> list[tuple[str, Path, str]]:
-    """(필드명, 파일 경로, content-type) 목록. lecture.json 의 files 를 따른다."""
+    """(필드명, 파일 경로, content-type) 목록. lecture.json 의 files 를 따른다.
+    텍스트 모드는 lecture.json 하나뿐이다 — 같은 폴더에 예전 영상 모드 산출물이 남아 있어도 보내지 않는다."""
     doc = json.loads((out_dir / "lecture.json").read_text(encoding="utf-8"))
+    if doc_mode(doc) == "text":
+        return [("lecture_json", out_dir / "lecture.json", "application/json")]
     files = doc.get("files") or {}
     out: list[tuple[str, Path, str]] = []
     for field, files_key, ctype in FIELDS:
@@ -103,7 +107,7 @@ def _connect(url: str) -> tuple[http.client.HTTPConnection, str]:
     return http.client.HTTPConnection(host, port, timeout=600), base
 
 
-def upload(out_dir: Path, api: str, token: str = "") -> dict:
+def upload(out_dir: Path, api: str) -> dict:
     parts = parts_for(out_dir)
     boundary = uuid.uuid4().hex
     heads, tail, length = multipart_plan(parts, boundary)
@@ -113,8 +117,6 @@ def upload(out_dir: Path, api: str, token: str = "") -> dict:
     conn.putrequest("POST", f"{base}/lectures")
     conn.putheader("Content-Type", f"multipart/form-data; boundary={boundary}")
     conn.putheader("Content-Length", str(length))
-    if token:
-        conn.putheader("X-Admin-Token", token)
     conn.endheaders()
 
     sent = 0
@@ -170,13 +172,12 @@ def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--out", required=True, help="산출물 폴더 (workspace/out/<ID>)")
     ap.add_argument("--api", default="", help="뷰어 API 주소 (생략하면 VCU_API 환경변수, 그것도 없으면 내장 기본값)")
-    ap.add_argument("--token", default="", help="관리자 토큰 (생략하면 VCU_API_TOKEN 환경변수)")
     ap.add_argument("--timeout", type=float, default=1800, help="ready 까지 기다릴 최대 초")
     ap.add_argument("--no-wait", action="store_true", help="업로드만 하고 적재 완료를 기다리지 않는다")
     a = ap.parse_args()
-    api_url, tok = config.api(a.api), config.token(a.token)
+    api_url = config.api(a.api)
 
-    res = upload(Path(a.out), api_url, tok)
+    res = upload(Path(a.out), api_url)
     lid = str(res.get("id", ""))
     try:  # 진행도 카드에서 결과 강의로 이어주기 위한 부가 정보. 실패해도 무방하다.
         doc = json.loads((Path(a.out) / "lecture.json").read_text(encoding="utf-8"))

@@ -18,11 +18,6 @@ def api(override: str = "") -> str:
     return (override or os.environ.get("VCU_API") or DEFAULT_API).rstrip("/")
 
 
-def token(override: str = "") -> str:
-    """관리자 토큰. 뷰어가 요구할 때만 쓰이고, 없으면 헤더 자체를 보내지 않는다."""
-    return override or os.environ.get("VCU_API_TOKEN", "")
-
-
 def is_default() -> bool:
     """기본 뷰어를 쓰고 있는지 — doctor 가 어디로 올라가는지 보여줄 때 쓴다."""
     return api() == DEFAULT_API.rstrip("/")

@@ -29,9 +29,10 @@ def api() -> str:
     return config.api()
 
 
-def start(video_id: str, url: str = "") -> dict:
-    """새 작업을 연다. fetch 가 실행될 때마다 부르므로 재작업이면 새 job 이 된다."""
-    job = {"job_id": stamped_id(video_id), "video_id": video_id, "url": url}
+def start(video_id: str, url: str = "", mode: str = "text") -> dict:
+    """새 작업을 연다. fetch 가 실행될 때마다 부르므로 재작업이면 새 job 이 된다.
+    mode 는 이후 모든 단계가 이 파일에서 읽는다(판단 단계의 progress 보고 포함)."""
+    job = {"job_id": stamped_id(video_id), "video_id": video_id, "url": url, "mode": mode}
     JOB_FILE.parent.mkdir(parents=True, exist_ok=True)
     JOB_FILE.write_text(json.dumps(job, ensure_ascii=False), encoding="utf-8")
     return job
@@ -51,7 +52,8 @@ def report(step: str, status: str, detail: str = "", **extra) -> None:
     if not base or not job:
         return
     payload = {"step": step, "status": status, "detail": detail,
-               "video_id": job.get("video_id", ""), "url": job.get("url", ""), **extra}
+               "video_id": job.get("video_id", ""), "url": job.get("url", ""),
+               "mode": job.get("mode", "video"), **extra}
     body = json.dumps(payload, ensure_ascii=False).encode()
     try:
         u = urlsplit(base)

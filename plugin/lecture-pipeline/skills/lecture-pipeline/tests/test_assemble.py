@@ -1,5 +1,7 @@
 import json
 
+import pytest
+
 from lecture_pipeline.assemble import build_lecture
 from lecture_pipeline.schema import validate_lecture
 
@@ -111,3 +113,78 @@ def test_build_lecture_generates_an_id_when_none_is_given(tmp_path):
     doc = build_lecture(_build(tmp_path), OUTLINE, NOTES, INFO, edited_duration=8.1)
     assert doc["lecture"]["id"].startswith("vid-")
     assert doc["files"] == {"original": "original.mp4", "edited": "edited.mp4", "thumbs_dir": "thumbs/"}
+
+
+# ── mode: text vs video (Task 4) ────────────────────────────────────────────
+
+
+def test_text_mode_builds_a_lecture_without_video(tmp_path):
+    b = _build(tmp_path)                                   # 기존 헬퍼. cuts.json 은 [] 로 만든다
+    (b / "cuts.json").write_text("[]", encoding="utf-8")
+    doc = build_lecture(b, OUTLINE, NOTES, INFO, None, "v-0927-1200", mode="text")
+    assert doc["schema_version"] == "1.1" and doc["lecture"]["mode"] == "text"
+    assert "files" not in doc
+    assert doc["lecture"]["duration"]["edit"] == doc["lecture"]["duration"]["orig"]
+    assert doc["lecture"]["pipeline"]["policy"] == "corrections_only_v1"
+    assert all("thumb" not in ch for ch in doc["chapters"])
+    assert validate_lecture(doc) == []
+
+
+def test_video_mode_keeps_files_thumbs_and_policy(tmp_path):
+    b = _build(tmp_path)
+    doc = build_lecture(b, OUTLINE, NOTES, INFO, 12.0, "v-0927-1200", mode="video")
+    assert doc["lecture"]["mode"] == "video" and doc["files"]["edited"] == "edited.mp4"
+    assert doc["chapters"][0]["thumb"] == "thumbs/ch01.jpg"
+    assert doc["lecture"]["pipeline"]["policy"] == "speech_only_v1"
+    assert validate_lecture(doc) == []
+
+
+def test_text_mode_cli_never_calls_ffmpeg(tmp_path, monkeypatch):
+    from lecture_pipeline import assemble, thumbs
+    b = _build(tmp_path)
+    (b / "cuts.json").write_text("[]", encoding="utf-8")
+    for name, obj in (("outline.json", OUTLINE), ("notes.json", NOTES), ("info.json", INFO)):
+        (tmp_path / name).write_text(json.dumps(obj), encoding="utf-8")
+    boom = lambda *a, **k: (_ for _ in ()).throw(AssertionError("ffmpeg called"))
+    monkeypatch.setattr(assemble.subprocess, "check_output", boom)
+    monkeypatch.setattr(thumbs, "grab", boom)
+    monkeypatch.setattr("sys.argv", ["lp assemble", "--mode", "text", "--build", str(b), "--outline", str(tmp_path / "outline.json"),
+                                     "--notes", str(tmp_path / "notes.json"), "--info", str(tmp_path / "info.json"), "--out", str(tmp_path / "out")])
+    assemble.main()
+    assert json.loads((tmp_path / "out/lecture.json").read_text())["lecture"]["mode"] == "text"
+
+
+def test_video_mode_cli_requires_the_video_files(tmp_path, monkeypatch):
+    from lecture_pipeline import assemble
+    monkeypatch.setattr("sys.argv", ["lp assemble", "--mode", "video", "--build", "b", "--outline", "o", "--notes", "n", "--info", "i", "--out", "x"])
+    with pytest.raises(SystemExit):
+        assemble.main()
+
+
+def test_text_mode_edit_equals_orig_exactly_even_past_3_decimals(tmp_path):
+    """R1: 텍스트 모드는 map_span 을 타지 않는다 — 컷이 없어도 map_span 은 3자리로 반올림하므로
+    orig 가 소수 4자리 이상이면 edit != orig 가 될 수 있다. 그 경로 자체를 피해야 한다."""
+    b = _build(tmp_path)
+    (b / "cuts.json").write_text("[]", encoding="utf-8")
+    sents = json.loads((b / "sentences.json").read_text(encoding="utf-8"))
+    sents[0]["start"] = 0.12345
+    sents[0]["end"] = 3.98765
+    (b / "sentences.json").write_text(json.dumps(sents), encoding="utf-8")
+    doc = build_lecture(b, OUTLINE, NOTES, INFO, None, "v-0927-1200", mode="text")
+    assert doc["segments"][0]["t"]["orig"] == [0.12345, 3.98765]
+    assert doc["segments"][0]["t"]["edit"] == doc["segments"][0]["t"]["orig"]
+    assert validate_lecture(doc) == []
+
+
+@pytest.mark.parametrize("extra", [["--original", "o.mp4", "--edited", "e.mp4"], ["--original", "o.mp4"], ["--edited", "e.mp4"]])
+@pytest.mark.parametrize("mode_args", [[], ["--mode", "text"]])
+def test_text_mode_refuses_video_files_instead_of_silently_dropping_them(tmp_path, monkeypatch, capsys, extra, mode_args):
+    """--original/--edited 를 넘겼는데 --mode video 를 빠뜨리면 텍스트 강의가 조용히 나오던 경로 — 이제 실패한다."""
+    from lecture_pipeline import assemble
+    monkeypatch.setattr("sys.argv", ["lp assemble", *mode_args, "--build", "b", "--outline", "o", "--notes", "n",
+                                     "--info", "i", "--out", str(tmp_path / "out"), *extra])
+    with pytest.raises(SystemExit) as e:
+        assemble.main()
+    assert e.value.code == 2
+    assert "--mode video" in capsys.readouterr().err
+    assert not (tmp_path / "out").exists()

@@ -35,20 +35,48 @@ def test_install_hints_cover_every_os_and_every_requirement():
 
 
 def test_report_exit_code_is_zero_only_when_nothing_is_missing(capsys):
-    assert doctor.report(_res()) == 0
+    assert doctor.report(_res(), mode="video") == 0
     assert "필요한 것이 모두 준비됐습니다" in capsys.readouterr().out
-    assert doctor.report(_res(ffmpeg=False)) == 1
+    assert doctor.report(_res(ffmpeg=False), mode="video") == 1
 
 
 def test_report_lists_install_command_for_each_missing_item(capsys):
-    doctor.report(_res(os_key="macos", ffmpeg=False, ytdlp=False))
+    doctor.report(_res(os_key="macos", ffmpeg=False, ytdlp=False), mode="video")
     out = capsys.readouterr().out
     assert "brew install ffmpeg" in out and "brew install yt-dlp" in out
     assert "brew install node" not in out           # 있는 것의 설치 명령은 보여주지 않는다
 
 
 def test_report_warns_about_cpu_render_time_and_windows_wsl(capsys):
-    doctor.report(_res(nvenc=False))
+    doctor.report(_res(nvenc=False), mode="video")
     assert "libx264(CPU)" in capsys.readouterr().out
-    doctor.report(_res(os_key="windows"))
+    doctor.report(_res(os_key="windows"), mode="video")
     assert "WSL2" in capsys.readouterr().out
+
+
+def test_text_mode_does_not_require_ffmpeg(capsys):
+    assert doctor.report(_res(ffmpeg=False), mode="text") == 0
+    out = capsys.readouterr().out
+    assert "영상 모드에만 필요" in out and "설치가 필요합니다" not in out
+
+
+def test_video_mode_still_requires_ffmpeg(capsys):
+    assert doctor.report(_res(ffmpeg=False), mode="video") == 1
+
+
+def test_text_mode_skips_the_render_time_note(capsys):
+    doctor.report(_res(), mode="text")
+    assert "libx264" not in capsys.readouterr().out
+
+
+def test_text_mode_skips_the_nvenc_encode_probe(monkeypatch):
+    """텍스트 모드는 렌더가 없다 — 최대 60초 걸리는 NVENC 인코딩 프로브를 돌리지 않는다."""
+    from lecture_pipeline import render
+    calls = []
+    monkeypatch.setattr(render, "nvenc_usable", lambda: calls.append(1) or True)
+    monkeypatch.setattr(doctor.shutil, "which", lambda name: f"/usr/bin/{name}")
+    monkeypatch.setattr(doctor, "_version", lambda cmd: "x")
+    assert doctor.check(mode="text")["gpu_nvenc"] is False
+    assert calls == []
+    assert doctor.check(mode="video")["gpu_nvenc"] is True
+    assert calls == [1]

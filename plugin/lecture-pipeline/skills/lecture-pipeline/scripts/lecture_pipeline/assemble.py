@@ -1,8 +1,12 @@
-"""모든 산출물 → lecture.json (+ 챕터 썸네일). 편집본 시간은 여기서만 계산한다.
+"""모든 산출물 → lecture.json (+ 영상 모드는 챕터 썸네일도). 편집본 시간은 여기서만 계산한다.
 
-입력: build_dir(words.json·sentences.json·cuts.json·corrections.json) · outline.json · notes.json · yt-dlp info.json · 편집본 mp4(ffprobe 길이)
-사용:
+입력: build_dir(words.json·sentences.json·cuts.json·corrections.json) · outline.json · notes.json · yt-dlp info.json
+     · (영상 모드만) 편집본 mp4(ffprobe 길이)·원본 mp4(썸네일 추출)
+사용(텍스트 모드 — 기본, 영상 없음):
   python3 <스킬>/scripts/lp.py assemble --build workspace/build/<ID>/youtube --outline workspace/build/<ID>/outline.json \
+    --notes workspace/build/<ID>/notes.json --info workspace/raw/<ID>/source.info.json --out workspace/out/<ID>
+사용(영상 모드 — --original/--edited 필수):
+  python3 <스킬>/scripts/lp.py assemble --mode video --build workspace/build/<ID>/youtube --outline workspace/build/<ID>/outline.json \
     --notes workspace/build/<ID>/notes.json --info workspace/raw/<ID>/source.info.json \
     --original workspace/raw/<ID>/source.mp4 --edited workspace/out/<ID>/edited.mp4 --out workspace/out/<ID>
 강의 id 는 여기서 `<video_id>-<MMDD-HHMM>` 로 자동 생성한다 — 사람이 번호를 주지 않는다.
@@ -18,10 +22,11 @@ from pathlib import Path
 
 from . import thumbs
 from .ids import stamped_id
-from .schema import validate_lecture
+from .schema import SCHEMA_VERSION, validate_lecture
 from .timeline import edit_at, map_span
 
 KST = timezone(timedelta(hours=9))
+POLICY = {"video": "speech_only_v1", "text": "corrections_only_v1"}
 
 
 def _word_index(words):
@@ -48,21 +53,22 @@ def _find_segment(t: float, sents: list[dict]) -> int | None:
     return None
 
 
-def _chapter(ch: dict, sents: list[dict], cuts, thumb_name: str | None) -> dict:
+def _chapter(ch: dict, sents: list[dict], cuts, thumb_name: str | None, text: bool) -> dict:
     a, b = int(ch["segments"][0]), int(ch["segments"][1])
     # 범위가 어긋나면 시간 계산용으로만 클램프하고 segments 는 원값을 둬 validate_lecture 가 거부하게 한다
     ca = max(1, min(a, len(sents)))
     cb = max(ca, min(b, len(sents)))
     s0, s1 = sents[ca - 1], sents[cb - 1]
+    orig = [s0["start"], s1["end"]]
     node = {
         "id": str(ch["id"]), "level": 1 if "." not in str(ch["id"]) else 2,
         "title": ch["title"], "summary": ch.get("summary", ""),
-        "t": {"orig": [s0["start"], s1["end"]], "edit": map_span(s0["start"], s1["end"], cuts)},
+        "t": {"orig": orig, "edit": list(orig) if text else map_span(s0["start"], s1["end"], cuts)},
         "segments": [a, b],
     }
     if thumb_name:
         node["thumb"] = thumb_name
-    node["children"] = [_chapter(c, sents, cuts, None) for c in ch.get("children", []) or []]
+    node["children"] = [_chapter(c, sents, cuts, None, text) for c in ch.get("children", []) or []]
     return node
 
 
@@ -76,8 +82,9 @@ def new_lecture_id(info: dict, now: datetime | None = None) -> str:
     return stamped_id(info.get("id"), now)
 
 
-def build_lecture(build_dir: Path, outline: dict, notes: dict, info: dict, edited_duration: float,
-                  lecture_id: str | None = None, glossary: list[dict] | None = None) -> dict:
+def build_lecture(build_dir: Path, outline: dict, notes: dict, info: dict, edited_duration: float | None,
+                  lecture_id: str | None = None, glossary: list[dict] | None = None, mode: str = "video") -> dict:
+    text = mode == "text"
     lecture_id = lecture_id or new_lecture_id(info)
     words = json.loads((build_dir / "words.json").read_text(encoding="utf-8"))["words"]
     sents = json.loads((build_dir / "sentences.json").read_text(encoding="utf-8"))
@@ -88,31 +95,37 @@ def build_lecture(build_dir: Path, outline: dict, notes: dict, info: dict, edite
     cuts = [tuple(c["orig"]) for c in cuts_raw]
     cut_words = {i for c in cuts_raw for i in range(c["from_idx"], c["to_idx"] + 1)}
     total = float(info.get("duration") or (words[-1]["end"] if words else 0))
+    edit_total = total if text else float(edited_duration)
 
-    segments = [{"idx": s["idx"], "text": _segment_text(s, widx, cut_words, corr),
-                 "t": {"orig": [s["start"], s["end"]], "edit": map_span(s["start"], s["end"], cuts)}} for s in sents]
+    segments = []
+    for s in sents:
+        orig = [s["start"], s["end"]]
+        edit = list(orig) if text else map_span(s["start"], s["end"], cuts)
+        segments.append({"idx": s["idx"], "text": _segment_text(s, widx, cut_words, corr), "t": {"orig": orig, "edit": edit}})
     cuts_out = [{"id": c["id"], "orig": c["orig"], "edit_at": edit_at(c["orig"][0], cuts), "category": c["category"],
                  "confidence": c["confidence"], "removed_text": c["removed_text"], "note": c.get("note", ""),
                  "segment_idx": _find_segment(c["orig"][0], sents)} for c in cuts_raw]
-    chapters = [_chapter(ch, sents, cuts, f"thumbs/ch{i:02d}.jpg") for i, ch in enumerate(outline["chapters"], 1)]
+    chapters = [_chapter(ch, sents, cuts, None if text else f"thumbs/ch{i:02d}.jpg", text) for i, ch in enumerate(outline["chapters"], 1)]
 
     def note_t(n: dict) -> dict:
         s = sents[min(max(int(n["segment_idx"]), 1), len(sents)) - 1]
-        return {"orig": [s["start"], s["end"]], "edit": map_span(s["start"], s["end"], cuts)}
+        orig = [s["start"], s["end"]]
+        return {"orig": orig, "edit": list(orig) if text else map_span(s["start"], s["end"], cuts)}
 
     notes_out = {
         "commands": [{"text": n["text"], "segment_idx": int(n["segment_idx"]), "t": note_t(n)} for n in notes.get("commands", [])],
         "links": [{"url": n["url"], "label": n.get("label") or n["url"], "segment_idx": int(n["segment_idx"]), "t": note_t(n)} for n in notes.get("links", [])],
     }
     doc = {
-        "schema_version": "1.0",
+        "schema_version": SCHEMA_VERSION,
         "lecture": {
             "id": lecture_id, "title": info.get("title", ""), "video_id": info.get("id", ""), "source_url": info.get("webpage_url", ""),
-            "duration": {"orig": round(total, 3), "edit": round(edited_duration, 3)},
-            "pipeline": {"transcript_source": "youtube_json3", "policy": "speech_only_v1",
+            "mode": mode,
+            "duration": {"orig": round(total, 3), "edit": round(edit_total, 3)},
+            "pipeline": {"transcript_source": "youtube_json3", "policy": POLICY[mode],
                          "generated_at": datetime.now(KST).isoformat(timespec="seconds")},
         },
-        "files": {"original": "original.mp4", "edited": "edited.mp4", "thumbs_dir": "thumbs/"},
+        **({} if text else {"files": {"original": "original.mp4", "edited": "edited.mp4", "thumbs_dir": "thumbs/"}}),
         "segments": segments, "cuts": cuts_out, "chapters": chapters, "notes": notes_out,
     }
     if glossary:
@@ -132,10 +145,20 @@ def _ffprobe_duration(p: Path) -> float:
 
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    for k in ("build", "outline", "notes", "info", "original", "edited", "out"):
+    ap.add_argument("--mode", choices=("text", "video"), default="text",
+                    help="기본 text. 영상 모드는 반드시 --mode video 를 명시한다(.job 에서 읽지 않는다)")
+    for k in ("build", "outline", "notes", "info", "out"):
         ap.add_argument(f"--{k}", required=True)
+    ap.add_argument("--original", help="영상 모드 — 원본 mp4(썸네일 추출)")
+    ap.add_argument("--edited", help="영상 모드 — 편집본 mp4(길이 측정)")
     ap.add_argument("--glossary", help="선택 — 용어집 패스 산출물 glossary.json")
     a = ap.parse_args()
+    video = a.mode == "video"
+    if video and not (a.original and a.edited):
+        ap.error("영상 모드는 --original 과 --edited 가 필요합니다")
+    if not video and (a.original or a.edited):
+        # --mode video 를 빠뜨린 영상 실행이 텍스트 강의로 조용히 바뀌어 편집본이 버려지는 것을 막는다.
+        ap.error("--original/--edited 는 영상 모드 전용입니다 — 영상 강의라면 --mode video 를 붙이세요")
     out = Path(a.out)
     out.mkdir(parents=True, exist_ok=True)
     doc = build_lecture(
@@ -143,13 +166,15 @@ def main() -> None:
         json.loads(Path(a.outline).read_text(encoding="utf-8")),
         json.loads(Path(a.notes).read_text(encoding="utf-8")),
         json.loads(Path(a.info).read_text(encoding="utf-8")),
-        _ffprobe_duration(Path(a.edited)), None,
+        _ffprobe_duration(Path(a.edited)) if video else None, None,
         json.loads(Path(a.glossary).read_text(encoding="utf-8")) if a.glossary else None,
+        a.mode,
     )
-    for ch in doc["chapters"]:
-        thumbs.grab(Path(a.original), ch["t"]["orig"][0], out / ch["thumb"])
+    if video:
+        for ch in doc["chapters"]:
+            thumbs.grab(Path(a.original), ch["t"]["orig"][0], out / ch["thumb"])
     (out / "lecture.json").write_text(json.dumps(doc, ensure_ascii=False, indent=1), encoding="utf-8")
-    print(f"lecture.json ok · segments={len(doc['segments'])} cuts={len(doc['cuts'])} "
+    print(f"lecture.json ok · mode={doc['lecture']['mode']} segments={len(doc['segments'])} cuts={len(doc['cuts'])} "
           f"chapters={len(doc['chapters'])} glossary={len(doc.get('glossary', []))} → {out}")
 
 

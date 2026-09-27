@@ -71,7 +71,7 @@ class _Stub(BaseHTTPRequestHandler):
     def do_POST(self):
         n = int(self.headers["Content-Length"])
         _Stub.received = {"body": self.rfile.read(n), "ctype": self.headers["Content-Type"],
-                          "token": self.headers.get("X-Admin-Token", "")}
+                          "token_sent": "X-Admin-Token" in self.headers}
         self._json(202, {"id": "vid-0823-1652", "status": "uploaded"})
 
     def do_GET(self):
@@ -96,21 +96,35 @@ def stub():
 
 def test_upload_streams_every_part_and_returns_the_new_lecture_id(tmp_path, stub):
     d = _out(tmp_path)
-    res = upload(d, stub, token="tok")
+    res = upload(d, stub)
     assert res["id"] == "vid-0823-1652"
     body = _Stub.received["body"]
+    assert _Stub.received["token_sent"] is False  # 관리자 토큰은 제거됐다 — 헤더를 보내지 않는다
     # 서버가 Content-Length 만큼 끊김 없이 읽어냈다는 것 자체가 계산이 맞다는 증거다
     # (모자라면 rfile.read 가 멈추고, 넘치면 다음 요청 파싱이 깨진다). 계산 회귀도 함께 잠근다.
     boundary = _Stub.received["ctype"].split("boundary=")[1]
     assert len(body) == multipart_plan(parts_for(d), boundary)[2]
     for needle in (b'name="lecture_json"', b'name="original"', b"ORIGINAL", b"EDITED", b'name="thumbs_zip"'):
         assert needle in body
-    assert _Stub.received["token"] == "tok"
 
 
-def test_upload_omits_the_token_header_when_there_is_none(tmp_path, stub):
-    upload(_out(tmp_path), stub)
-    assert _Stub.received["token"] == ""
+TEXT_DOC = {"schema_version": "1.1", "lecture": {"mode": "text"}}
+
+
+def test_text_mode_sends_only_the_lecture_json_even_with_old_video_leftovers(tmp_path):
+    d = _out(tmp_path)                                       # mp4 두 개 + thumbs/ 가 남은 폴더
+    (d / "lecture.json").write_text(json.dumps(TEXT_DOC), encoding="utf-8")
+    assert [(f, p.name) for f, p, _ in parts_for(d)] == [("lecture_json", "lecture.json")]
+    assert not (d / "thumbs.zip").exists()                    # 옛 썸네일로 zip 을 만들지 않는다
+
+
+def test_text_mode_upload_round_trip(tmp_path, stub):
+    d = tmp_path / "out"
+    d.mkdir()
+    (d / "lecture.json").write_text(json.dumps(TEXT_DOC), encoding="utf-8")
+    upload(d, stub)
+    body = _Stub.received["body"]
+    assert b'name="lecture_json"' in body and b'name="original"' not in body
 
 
 def test_wait_ready_reports_failure_instead_of_spinning(stub):
