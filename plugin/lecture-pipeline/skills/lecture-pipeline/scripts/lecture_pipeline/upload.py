@@ -145,7 +145,7 @@ def upload(out_dir: Path, api: str) -> dict:
 
 
 def wait_ready(api: str, lecture_id: str, timeout: float = 1800) -> dict:
-    """적재·임베딩이 끝날 때까지 기다린다. 임베딩 모델이 없으면 서버가 키워드 검색만으로 ready 를 낸다."""
+    """적재가 끝나 검색할 수 있게 될 때까지 기다린다."""
     t0 = time.monotonic()
     seen = ""
     while time.monotonic() - t0 < timeout:
@@ -163,7 +163,7 @@ def wait_ready(api: str, lecture_id: str, timeout: float = 1800) -> dict:
         if s == "failed":
             raise RuntimeError(f"적재 실패: {str(st.get('ingest_error'))[:800]}")
         if s == "embedding" and st.get("embed_total"):
-            _log(f"  임베딩 {st.get('embed_done')}/{st.get('embed_total')}")
+            _log(f"  검색 준비 {st.get('embed_done')}/{st.get('embed_total')}")
         time.sleep(POLL_EVERY)
     raise TimeoutError(f"{timeout:.0f}초 안에 ready 가 되지 않았다(마지막 상태: {seen or '알 수 없음'})")
 
@@ -189,7 +189,7 @@ def main() -> None:
         print(lid)
         return
     st = wait_ready(api_url, lid, a.timeout)
-    _log(f"적재 완료 · 임베딩 {st.get('embed_done')}/{st.get('embed_total')}")
+    _log("적재 완료 · 뷰어에서 검색할 수 있습니다")
     print(lid)
 
 

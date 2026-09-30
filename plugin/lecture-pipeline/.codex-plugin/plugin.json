@@ -1,6 +1,6 @@
 {
   "name": "lecture-pipeline",
-  "version": "0.11.0",
+  "version": "0.11.1",
   "description": "유튜브 강의를 정제 전사·목차·요약·용어집으로 만들고 뷰어에 올립니다. 선택적으로 편집본 영상도 만듭니다.",
   "author": {
     "name": "kuntae802",

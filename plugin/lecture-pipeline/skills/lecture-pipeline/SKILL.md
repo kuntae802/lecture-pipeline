@@ -63,7 +63,7 @@ description: 유튜브 강의 URL로 정제 전사·목차·챕터 요약·용�
      → `lecture.json` + `thumbs/chNN.jpg`
 9. **업로드** — `$PY "$SKILL/scripts/lp.py" upload --out workspace/out/<ID>`
    → 뷰어 주소는 내장돼 있으므로 그대로 실행하면 된다. 텍스트 모드는 `lecture.json` 하나만, 영상 모드는 원본·편집본·`lecture.json`·썸네일 zip(알아서 만든다)을 올리고,
-   적재·임베딩이 끝날 때까지 기다린 뒤 강의 id 를 출력한다. 끝나면 뷰어에서 볼 수 있는 주소를 사용자에게 알린다.
+   적재가 끝날 때까지 기다린 뒤 강의 id 를 출력한다. 끝나면 뷰어에서 볼 수 있는 주소를 사용자에게 알린다.
    - [텍스트] `https://lab.vibecoding-univ.com/lecture-pipeline/text/lectures/<강의 id>`
    - [영상] `https://lab.vibecoding-univ.com/lecture-pipeline/video/lectures/<강의 id>`
    - `VCU_API` 로 뷰어를 바꾼 경우에는 그 값에서 끝의 `/api` 를 뗀 주소를 기준으로 같은 경로(`/text/lectures/<강의 id>` 또는 `/video/lectures/<강의 id>`)를 붙인다.
