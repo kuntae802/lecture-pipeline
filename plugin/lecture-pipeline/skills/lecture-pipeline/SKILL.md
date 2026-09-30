@@ -1,6 +1,6 @@
 ---
 name: lecture-pipeline
-description: 유튜브 강의 URL → 정제 전사·목차·챕터 요약·용어집(lecture.json)을 만들어 뷰어 웹에 올린다. --include-video 를 붙이면 실언·중복 발화를 잘라낸 편집본 mp4 까지 만든다. 기계 단계는 동봉된 파이썬 스크립트(표준 라이브러리만), 판단 단계는 이 문서의 브리프로 Opus 서브에이전트를 병렬로 띄운다. 사용 "/lecture-pipeline <youtube-url> [--include-video]".
+description: 유튜브 강의 URL로 정제 전사·목차·챕터 요약·용어집(lecture.json)을 만들어 뷰어 웹에 올린다. --include-video를 붙이면 실언·중복 발화를 잘라낸 편집본 mp4도 만든다. 기계 단계는 동봉된 파이썬 스크립트로, 판단 단계는 이 문서의 브리프로 처리한다. Claude Code에서는 /lecture-pipeline, Codex에서는 $lecture-pipeline으로 호출한다.
 ---
 
 # lecture-pipeline
@@ -12,6 +12,7 @@ description: 유튜브 강의 URL → 정제 전사·목차·챕터 요약·용�
 ## 경로 규칙 (중요)
 
 - `$SKILL` = 이 스킬의 base directory(스킬이 로드될 때 함께 주어진다).
+- 스킬 경로가 변수로 제공되지 않으면 현재 읽고 있는 `SKILL.md`의 부모 폴더 절대경로를 `$SKILL`로 삼는다. 스크립트를 실행하기 전에 실제 경로로 치환한다.
 - `$PY` = `python3` (윈도우는 `python`). 0단계 `doctor` 가 어느 쪽인지 알려준다.
 - **작업 산출물은 전부 현재 작업 폴더(cwd) 아래**에 만들어진다. 코드는 `$SKILL` 안에만 있고, 사용자는 아무 빈 폴더에서나 실행하면 된다.
 - 아래에서 `<ID>` = 유튜브 video id(1단계가 URL 에서 뽑아 폴더 이름으로 쓴다). **사용자에게 강의 번호를 묻지 않는다** — 뷰어에 올라갈 강의 id 는 8단계가 `<ID>-<MMDD-HHMM>` 으로 자동 생성한다.
@@ -40,7 +41,7 @@ description: 유튜브 강의 URL → 정제 전사·목차·챕터 요약·용�
    → `words.json`·`sentences.json`·`indexed.md`·`stats.json`
 3. **청크** — `$PY "$SKILL/scripts/lp.py" chunk --build workspace/build/<ID>/youtube --out workspace/build/<ID>/chunks`
    → `NN.md` ×N + `manifest.json` (3시간 강의면 19개 안팎)
-4. **교정·편집 패스 (판단)** — `manifest.json` 의 청크마다 Opus 서브에이전트 1개를 **8개씩 병렬**로 띄운다(`Agent(model="opus")`). 브리프에 절대경로만 채워 그대로 전달한다.
+4. **교정·편집 패스 (판단)** — `manifest.json`의 청크마다 판단 작업 1개를 수행한다. Claude Code에서는 Opus 서브에이전트를 최대 8개씩 병렬로 사용한다. Codex에서는 에이전트 병렬 실행이 가능하면 최대 8개씩 사용하고, 불가능하면 현재 에이전트가 청크를 순서대로 처리한다. 브리프에 절대경로만 채워 그대로 따른다.
    - [텍스트] 브리프 = 아래 [교정 브리프]. 산출 `chunks/NN.corrections.json`. 끝나면 corrections 파일 수가 청크 수와 같은지 확인한다.
    - [영상] 브리프 = 아래 [편집 브리프]. 산출 `chunks/NN.cuts.json`·`chunks/NN.corrections.json`. 끝나면 두 파일 수가 각각 청크 수와 같은지 확인한다.
    - 배치를 하나 마칠 때마다 진행도를 알린다 — `$PY "$SKILL/scripts/lp.py" progress --step edit --detail "8/19"` (완료 청크 수/전체).
@@ -49,8 +50,8 @@ description: 유튜브 강의 URL → 정제 전사·목차·챕터 요약·용�
    - [영상] `$PY "$SKILL/scripts/lp.py" merge --build workspace/build/<ID>/youtube --chunks workspace/build/<ID>/chunks` → `cuts.json`·`corrections.json`·`sentences.corrected.json`. 첫 실행이면 컷 목록을 사용자에게 한 번 보여준다.
    - `sentences.corrected.json` = 표기 교정을 반영한 문장 목록(원본 `sentences.json` 과 형식·번호가 같다). 6·6.5단계는 이 파일을 읽어야 잘못 인식된 용어가 목차·용어집에 들어가지 않는다.
    - 에러가 나면 **그 청크만** 4단계를 다시 돌린다(브리프 끝에 에러 메시지 원문을 붙인다).
-6. **구조화 패스 (판단)** — 먼저 `$PY "$SKILL/scripts/lp.py" progress --step outline` 로 시작을 알리고, Opus 서브에이전트 1개. 브리프는 아래 [구조화 브리프]. 산출 `workspace/build/<ID>/outline.json`·`notes.json`. 문장 커버리지가 어긋나면 8단계가 거부하므로, 에러를 붙여 1회 재실행한다. 끝나면 `... progress --step outline --status done`.
-6.5. **용어집 패스 (판단, 선택)** — `--no-glossary` 가 아니면 `... progress --step glossary` 로 알린 뒤 Opus 서브에이전트 1개를 더 띄운다. 브리프는 아래 [용어집 브리프]. 산출 `workspace/build/<ID>/glossary.json`. 실패해도 파이프라인은 계속 간다(8단계에서 `--glossary` 를 빼면 그만).
+6. **구조화 패스 (판단)** — 먼저 `$PY "$SKILL/scripts/lp.py" progress --step outline` 로 시작을 알리고, [구조화 브리프]를 에이전트 1개 또는 현재 에이전트가 수행한다. 산출 `workspace/build/<ID>/outline.json`·`notes.json`. 문장 커버리지가 어긋나면 8단계가 거부하므로, 에러를 붙여 1회 재실행한다. 끝나면 `... progress --step outline --status done`.
+6.5. **용어집 패스 (판단, 선택)** — `--no-glossary`가 아니면 `... progress --step glossary`로 알린 뒤 [용어집 브리프]를 에이전트 1개 또는 현재 에이전트가 수행한다. 산출 `workspace/build/<ID>/glossary.json`. 실패해도 파이프라인은 계속 간다(8단계에서 `--glossary`를 빼면 된다).
 7. **[영상] 렌더** — 텍스트 모드는 이 단계를 실행하지도 보고하지도 않는다(8단계로 간다). `$PY "$SKILL/scripts/lp.py" render --original workspace/raw/<ID>/source.mp4 --cuts workspace/build/<ID>/youtube/cuts.json --out workspace/out/<ID>/edited.mp4`
    - 인코더 기본값 `auto` = 코어 8개 이상이면 libx264(실측상 GPU 보다 빠르고 파일도 작다), 그 미만이면 NVENC(실제 동작 확인 후). `--encoder` 로 강제 지정할 수 있다. 오래 걸리므로 백그라운드로 돌리고 로그를 남긴다.
    - 원격 GPU 호스트가 있으면 `--ssh-host user@host --ssh-port 22` 를 덧붙인다(그 호스트의 컨테이너에서 렌더하고 결과만 받아온다).
@@ -63,8 +64,8 @@ description: 유튜브 강의 URL → 정제 전사·목차·챕터 요약·용�
 9. **업로드** — `$PY "$SKILL/scripts/lp.py" upload --out workspace/out/<ID>`
    → 뷰어 주소는 내장돼 있으므로 그대로 실행하면 된다. 텍스트 모드는 `lecture.json` 하나만, 영상 모드는 원본·편집본·`lecture.json`·썸네일 zip(알아서 만든다)을 올리고,
    적재·임베딩이 끝날 때까지 기다린 뒤 강의 id 를 출력한다. 끝나면 뷰어에서 볼 수 있는 주소를 사용자에게 알린다.
-   - [텍스트] `https://kuntae802.mooo.com/vcu_lecture_system_proposal/text/lectures/<강의 id>`
-   - [영상] `https://kuntae802.mooo.com/vcu_lecture_system_proposal/video/lectures/<강의 id>`
+   - [텍스트] `https://lab.vibecoding-univ.com/lecture-pipeline/text/lectures/<강의 id>`
+   - [영상] `https://lab.vibecoding-univ.com/lecture-pipeline/video/lectures/<강의 id>`
    - `VCU_API` 로 뷰어를 바꾼 경우에는 그 값에서 끝의 `/api` 를 뗀 주소를 기준으로 같은 경로(`/text/lectures/<강의 id>` 또는 `/video/lectures/<강의 id>`)를 붙인다.
 
    `--no-upload` 로 건너뛰었거나 업로드가 실패하면, 산출물 폴더 `workspace/out/<ID>/` 를 알리고, 나중에 `$PY "$SKILL/scripts/lp.py" upload --out workspace/out/<ID>` 로 다시 올리면 된다고 안내한다(파이프라인을 다시 돌릴 필요 없음).
@@ -153,6 +154,6 @@ Finish with a 3-line report: number of terms, which ones you were unsure qualifi
 
 - 3시간 강의 기준 실측(1강): 전처리 수 초 · 편집 패스 약 10분(19청크 병렬) · 구조화 약 8분 · 컷 63건/2분 42초 제거.
 - [영상] 렌더 실측 약 12~14분(libx264 4스레드 기준 13분).
-- 판단 단계는 Opus 서브에이전트를 많이 쓴다 — 편집 패스(영상 모드)는 3시간 강의 한 편에 대략 150만 토큰. 교정 패스(텍스트 모드)는 컷 판단이 없어 그보다 훨씬 적게 든다(실측 전). 사용자에게 미리 알린다.
-- 용어집은 서브에이전트 1개(3시간 강의 기준 20만 토큰 안팎)를 더 쓴다. 비용을 아끼려면 `--no-glossary`.
+- 판단 단계는 토큰을 많이 쓴다. Claude Code의 Opus 편집 패스 실측은 3시간 강의 한 편에 대략 150만 토큰이다. Codex의 사용량은 아직 측정하지 않았다. 교정 패스(텍스트 모드)는 컷 판단이 없어 그보다 적을 것으로 예상한다. 사용자에게 미리 알린다.
+- 용어집은 Claude Code의 3시간 강의 기준 약 20만 토큰을 더 썼다. 비용을 아끼려면 `--no-glossary`.
 - 사람이 읽을 설치·사용 안내는 `$SKILL/README.md`.

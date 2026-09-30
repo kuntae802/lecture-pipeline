@@ -1,0 +1,23 @@
+{
+  "name": "lecture-pipeline",
+  "version": "0.11.0",
+  "description": "유튜브 강의를 정제 전사·목차·요약·용어집으로 만들고 뷰어에 올립니다. 선택적으로 편집본 영상도 만듭니다.",
+  "author": {
+    "name": "kuntae802",
+    "email": "kuntae802@gmail.com"
+  },
+  "keywords": ["lecture", "transcript", "youtube", "korean", "video"],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Lecture Pipeline",
+    "shortDescription": "유튜브 강의를 검색 가능한 자료로 정리",
+    "longDescription": "한국어 유튜브 강의의 자동자막을 교정하고 목차·요약·용어집을 만들어 뷰어에 올립니다. 요청하면 발화 편집본 영상도 만듭니다.",
+    "developerName": "kuntae802",
+    "category": "Productivity",
+    "capabilities": ["Read", "Write"],
+    "defaultPrompt": [
+      "$lecture-pipeline https://youtu.be/영상ID 강의를 정리해 줘",
+      "$lecture-pipeline https://youtu.be/영상ID --include-video로 편집본도 만들어 줘"
+    ]
+  }
+}

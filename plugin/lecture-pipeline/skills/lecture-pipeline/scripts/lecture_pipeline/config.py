@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import os
 
-DEFAULT_API = "https://kuntae802.mooo.com/vcu_lecture_system_proposal/api"
+DEFAULT_API = "https://lab.vibecoding-univ.com/lecture-pipeline/api"
 
 
 def api(override: str = "") -> str:

@@ -1,0 +1,20 @@
+{
+  "name": "vcu-lecture-plugins",
+  "interface": {
+    "displayName": "VCU Lecture Plugins"
+  },
+  "plugins": [
+    {
+      "name": "lecture-pipeline",
+      "source": {
+        "source": "local",
+        "path": "./plugin/lecture-pipeline"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Productivity"
+    }
+  ]
+}

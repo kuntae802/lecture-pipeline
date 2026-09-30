@@ -1,6 +1,6 @@
 # lecture-pipeline — 강의 영상 자동 정돈 파이프라인
 
-유튜브 강의 URL 하나로 **정제 전사·목차·챕터 요약·용어집**을 만들어 뷰어 웹에 올려 주는 Claude Code 스킬입니다.
+유튜브 강의 URL 하나로 **정제 전사·목차·챕터 요약·용어집**을 만들어 뷰어 웹에 올려 주는 Claude Code·Codex 스킬입니다.
 기본은 텍스트 정리(영상은 받지도 만들지도 않음)이고, `--include-video` 를 붙이면 **편집본 영상**까지 만들어
 목차 점프·본문 검색·편집 검토가 되는 영상 페이지가 됩니다.
 
@@ -20,7 +20,7 @@
 | yt-dlp | 유튜브 원본·자동자막 받기 |
 | node 또는 deno | yt-dlp 가 유튜브 차단(403)을 피하는 데 필요 |
 
-**무엇이 없는지는 직접 확인할 필요 없습니다.** Claude Code 에서 스킬을 실행하면 첫 단계가 환경 점검이고,
+**무엇이 없는지는 직접 확인할 필요 없습니다.** Claude Code나 Codex에서 스킬을 실행하면 첫 단계가 환경 점검이고,
 빠진 게 있으면 그 OS 에 맞는 설치 명령을 알려준 뒤 승인을 받아 대신 실행해 줍니다.
 
 직접 점검하려면:
@@ -39,12 +39,16 @@ python3 <스킬폴더>/scripts/lp.py doctor --mode video   # 영상 모드 기�
 
 ## 사용법
 
-Claude Code 에서 아무 **빈 폴더**를 열고:
+Claude Code나 Codex에서 아무 **빈 폴더**를 열고:
 
 ```
 /lecture-pipeline https://youtu.be/영상ID                   # 텍스트 모드(기본)
 /lecture-pipeline https://youtu.be/영상ID --include-video   # 편집본 영상까지
 ```
+
+위 호출 형식은 Claude Code 기준입니다. Codex에서는 `/lecture-pipeline` 대신
+`$lecture-pipeline`을 사용합니다. Codex 플러그인 설치 방법은
+[`plugin/lecture-pipeline/README.md`](../../README.md)를 보세요.
 
 산출물은 그 폴더 아래 `workspace/` 에 쌓입니다. 코드는 스킬 폴더 안에만 있고 작업 폴더를 더럽히지 않습니다.
 
@@ -62,8 +66,8 @@ workspace/
 **마지막 업로드는 기본으로 자동입니다** — 뷰어 주소가 스킬에 내장돼 있어 설치 후 따로 설정할 것이 없습니다.
 끝나면 강의 페이지 주소를 알려 줍니다.
 
-- 텍스트 모드: `https://kuntae802.mooo.com/vcu_lecture_system_proposal/text/lectures/<강의 id>`
-- 영상 모드: `https://kuntae802.mooo.com/vcu_lecture_system_proposal/video/lectures/<강의 id>`
+- 텍스트 모드: `https://lab.vibecoding-univ.com/lecture-pipeline/text/lectures/<강의 id>`
+- 영상 모드: `https://lab.vibecoding-univ.com/lecture-pipeline/video/lectures/<강의 id>`
 
 다른 뷰어에 올리려면 환경변수로 덮으면 됩니다(주소는 이 값에서 `/api` 를 뗀 곳 기준).
 
@@ -92,7 +96,7 @@ python3 <스킬폴더>/scripts/lp.py upload --out workspace/out/<영상ID>
 | 렌더(영상 모드만) | **약 13~40분** (아래 실측 참고) |
 | 웹 적재(업로드 후) | 2~3분 |
 
-- 컷 편집 판단(영상 모드)에 **Opus 서브에이전트를 많이 씁니다 — 3시간 강의 한 편에 대략 150만 토큰**. Claude 구독 사용량을 꽤 소모합니다.
+- 컷 편집 판단(영상 모드)은 토큰을 많이 씁니다. **Claude Code의 Opus 실행 실측은 3시간 강의 한 편에 대략 150만 토큰**입니다. Codex 사용량은 아직 측정하지 않았습니다.
   텍스트 모드의 교정 판단은 컷 판단이 없어 그보다 훨씬 적게 듭니다(실측 전).
 - **렌더 실측**(영상 모드)(1080p 화면 녹화 3분 구간, 3시간 27분으로 환산): libx264 veryfast 32스레드 약 12분 · **4스레드 약 13분** · NVENC(GPU) 약 14분.
   강의 영상은 움직임이 적어 CPU 인코딩이 잘 먹습니다 — **GPU 가 없어도 느리지 않습니다**(랩톱 코어가 서버보다 느린 걸 감안하면 20~40분).
@@ -113,8 +117,8 @@ scripts/
   lp.py                  단일 진입점 (doctor·fetch·preprocess·chunk·merge·render·assemble·upload·progress)
   lecture_pipeline/      기계 단계 구현 (표준 라이브러리만)
   schema/                lecture.json 스키마 — 웹 업로드 검증과 같은 파일을 쓴다
-tests/                   pytest 99개 (pytest 만 있으면 실행 가능)
-SKILL.md                 Claude 가 읽는 절차서 + 판단 단계 브리프
+tests/                   pytest 테스트 (pytest 만 있으면 실행 가능)
+SKILL.md                 Claude Code·Codex가 읽는 절차서 + 판단 단계 브리프
 ```
 
 기계적으로 결정되는 것(타임스탬프 재매핑·컷 구간 계산·JSON 조립)은 전부 스크립트가, 판단이 필요한 것(무엇을 자를지·어떻게 나눌지)만 LLM 이 합니다. 그 경계가 이 파이프라인의 설계 핵심입니다.

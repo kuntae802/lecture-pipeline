@@ -125,7 +125,7 @@ def test_report_carries_extra_fields_like_the_finished_lecture(tmp_path, monkeyp
 
 
 def test_api_base_path_is_preserved(tmp_path, monkeypatch, stub):
-    # 공개 URL 은 /vcu_lecture_system_proposal/api 처럼 하위 경로에 붙어 있다.
+    # 공개 URL 은 /lecture-pipeline/api 처럼 하위 경로에 붙어 있다.
     monkeypatch.chdir(tmp_path)
     monkeypatch.setenv("VCU_API", stub + "/sub/api")
     job = jobs.start("vid")
